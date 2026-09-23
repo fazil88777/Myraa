@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MYRA</string>
+    <string name="accessibility_desc">MYRA uses accessibility features to tap buttons, type text and scroll the screen on your behalf.</string>
+    <string name="status_idle">Idle - enter your API key and tap Connect</string>
+    <string name="hint_api_key">Gemini API key</string>
+    <string name="label_save">Save</string>
+    <string name="label_connect">Connect</string>
+    <string name="label_disconnect">Disconnect</string>
+    <string name="label_permissions">Permissions</string>
+    <string name="label_orb_toggle">Floating Orb</string>
+    <string name="label_call_role">Call Role</string>
+    <string name="hint_message">Type a message...</string>
+    <string name="label_send">Send</string>
+    <string name="channel_name">MYRA</string>
+    <string name="notif_text">MYRA voice assistant is running</string>
+</resources>
