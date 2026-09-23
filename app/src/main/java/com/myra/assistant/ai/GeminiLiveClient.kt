@@ -92,14 +92,14 @@ class GeminiLiveClient(private val listener: Listener) {
             fdArray.put(
                 functionDecl(
                     "open_app", "Open an app on the phone",
-                    obj("app_name", strProp("App name, e.g. WhatsApp")),
+                    obj("app_name" to strProp("App name, e.g. WhatsApp")),
                     listOf("app_name")
                 )
             )
             fdArray.put(
                 functionDecl(
                     "make_call", "Call a phone number",
-                    obj("phone_number", strProp("Phone number to call")),
+                    obj("phone_number" to strProp("Phone number to call")),
                     listOf("phone_number")
                 )
             )
@@ -107,8 +107,8 @@ class GeminiLiveClient(private val listener: Listener) {
                 functionDecl(
                     "send_sms", "Send an SMS",
                     obj(
-                        "phone_number", strProp("Phone number to send to"),
-                        "message", strProp("SMS message text")
+                        "phone_number" to strProp("Phone number to send to"),
+                        "message" to strProp("SMS message text")
                     ),
                     listOf("phone_number", "message")
                 )
@@ -118,21 +118,21 @@ class GeminiLiveClient(private val listener: Listener) {
             fdArray.put(
                 functionDecl(
                     "tap_text", "Tap on-screen text",
-                    obj("text", strProp("Visible text to tap")),
+                    obj("text" to strProp("Visible text to tap")),
                     listOf("text")
                 )
             )
             fdArray.put(
                 functionDecl(
                     "input_text", "Type text into the focused field",
-                    obj("text", strProp("Text to type")),
+                    obj("text" to strProp("Text to type")),
                     listOf("text")
                 )
             )
             fdArray.put(
                 functionDecl(
                     "scroll_screen", "Scroll the screen",
-                    obj("direction", strProp("up or down")),
+                    obj("direction" to strProp("up or down")),
                     emptyList()
                 )
             )
