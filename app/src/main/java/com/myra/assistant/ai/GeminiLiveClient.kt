@@ -30,9 +30,9 @@ class GeminiLiveClient(private val listener: Listener) {
     }
 
     companion object {
-        const val MODEL = "models/gemini-2.0-flash-exp"
+        const val MODEL = models/gemini-3.1-flash-live-preview
         const val BASE_URL =
-            "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key="
+            "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key="
     }
 
     private val client: OkHttpClient =
