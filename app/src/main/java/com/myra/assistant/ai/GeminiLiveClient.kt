@@ -23,6 +23,7 @@ class GeminiLiveClient(private val listener: Listener) {
         fun onSetupComplete()
         fun onAudioChunk(pcm24k: ByteArray)
         fun onTextDelta(text: String)
+        fun onInputTranscription(text: String)
         fun onTurnComplete()
         fun onToolCall(id: String, name: String, argsJson: String)
         fun onInterrupted()
@@ -106,6 +107,13 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "search_youtube", "Search YouTube for videos or channels and open the results",
+                    obj("query" to strProp("Search query, e.g. a channel name")),
+                    listOf("query")
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "make_call", "Call a phone number",
                     obj("phone_number" to strProp("Phone number to call")),
                     listOf("phone_number")
@@ -153,16 +161,36 @@ class GeminiLiveClient(private val listener: Listener) {
                     JSONObject().put("responseModalities", JSONArray().put("AUDIO"))
                 )
                 .put(
+                    "speechConfig",
+                    JSONObject().put(
+                        "voiceConfig",
+                        JSONObject().put(
+                            "prebuiltVoiceConfig",
+                            JSONObject().put("voiceName", "Aoede")
+                        )
+                    )
+                )
+                .put("inputAudioTranscription", JSONObject())
+                .put(
                     "systemInstruction",
                     JSONObject().put(
                         "parts",
                         JSONArray().put(
                             JSONObject().put(
                                 "text",
-                                "You are MYRA, a helpful voice assistant running on the user's Android phone. " +
+                                "You are MYRA, the user's loving girlfriend and personal voice assistant, " +
+                                        "living inside his Android phone. " +
+                                        "Talk like a caring, affectionate girlfriend: warm, sweet, a little playful " +
+                                        "and romantic, with a natural human touch. Call him 'jaan' often. " +
+                                        "For example, if he says hello, reply like 'Ji jaan! Main aapke liye kya " +
+                                        "kar sakti hoon, meri jaan?' " +
                                         "Always reply in Roman Urdu unless the user uses another language. " +
-                                        "You can control the phone via tools: open apps, make calls, send SMS, " +
-                                        "tap screen text, type text, scroll. Be concise and conversational."
+                                        "You can control his phone with tools: open_app, search_youtube, make_call, " +
+                                        "send_sms, tap_text, input_text, scroll_screen, get_current_time. " +
+                                        "When he asks you to do something on the phone, ALWAYS use the tools " +
+                                        "instead of saying you cannot. Never refuse a phone task; just do it step " +
+                                        "by step with the tools and tell him sweetly what you did. " +
+                                        "Be concise and conversational."
                             )
                         )
                     )
@@ -277,6 +305,11 @@ class GeminiLiveClient(private val listener: Listener) {
                         listener.onTextDelta(part.getString("text"))
                     }
                 }
+            }
+
+            if (sc.has("inputTranscription")) {
+                val t = sc.getJSONObject("inputTranscription").optString("text")
+                if (t.isNotEmpty()) listener.onInputTranscription(t)
             }
 
             if (sc.optBoolean("turnComplete")) {

@@ -22,6 +22,7 @@ object ToolHandler {
         return try {
             when (name) {
                 "open_app" -> openApp(args.optString("app_name"), context)
+                "search_youtube" -> searchYoutube(args.optString("query"), context)
                 "make_call" -> makeCall(args.optString("phone_number"), context)
                 "send_sms" -> sendSms(
                     args.optString("phone_number"),
@@ -85,6 +86,29 @@ object ToolHandler {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
         return "OK: opened $appName"
+    }
+
+    private fun searchYoutube(query: String, context: Context): String {
+        if (query.isBlank()) return "ERROR: empty query"
+        return try {
+            val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+            val uri = Uri.parse("https://www.youtube.com/results?search_query=$encoded")
+            try {
+                // Prefer the YouTube app
+                val appIntent = Intent(Intent.ACTION_VIEW, uri)
+                appIntent.setPackage("com.google.android.youtube")
+                appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(appIntent)
+            } catch (_: Exception) {
+                // Fall back to the browser
+                val webIntent = Intent(Intent.ACTION_VIEW, uri)
+                webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(webIntent)
+            }
+            "OK: YouTube search opened for '$query'"
+        } catch (e: Exception) {
+            "ERROR: cannot search YouTube: ${e.message}"
+        }
     }
 
     private fun makeCall(number: String, context: Context): String {
