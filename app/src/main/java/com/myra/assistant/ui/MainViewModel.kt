@@ -11,6 +11,7 @@ import com.myra.assistant.ai.AudioEngine
 import com.myra.assistant.ai.GeminiLiveClient
 import com.myra.assistant.ai.ToolHandler
 import com.myra.assistant.data.ChatMessage
+import com.myra.assistant.service.ScreenShareService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -29,6 +30,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isConnected = MutableLiveData(false)
     val isConnected: LiveData<Boolean> = _isConnected
+
+    private val _isSharing = MutableLiveData(false)
+    val isSharing: LiveData<Boolean> = _isSharing
 
     private var client: GeminiLiveClient? = null
     private var audio: AudioEngine? = null
@@ -195,6 +199,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         })
         client = c
         c.connect(apiKey)
+        // Re-hook screen frames to the new client if sharing was already on
+        if (_isSharing.value == true) {
+            ScreenShareService.onFrame = { b64 -> sendVideoFrame(b64) }
+        }
     }
 
     fun sendTypedText(text: String) {
@@ -202,6 +210,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pendingInputMsgIndex = -1
         lastUserSpeechAt = System.currentTimeMillis()
         client?.sendText(text)
+    }
+
+    /** Called by ScreenShareService for each captured frame (base64 JPEG). */
+    fun sendVideoFrame(base64Jpeg: String) {
+        client?.sendVideoFrame(base64Jpeg)
+    }
+
+    fun setSharing(sharing: Boolean) {
+        if (sharing) {
+            ScreenShareService.onFrame = { b64 -> sendVideoFrame(b64) }
+        } else {
+            ScreenShareService.onFrame = null
+        }
+        _isSharing.postValue(sharing)
     }
 
     fun stopSession() {

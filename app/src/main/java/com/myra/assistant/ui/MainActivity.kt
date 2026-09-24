@@ -1,11 +1,14 @@
 package com.myra.assistant.ui
 
+import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
@@ -13,6 +16,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.myra.assistant.R
 import com.myra.assistant.service.FloatingOrbService
+import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.PermissionHelper
 import com.myra.assistant.util.Prefs
 
@@ -24,6 +28,23 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val REQ_CORE = 1001
+    }
+
+    // One-time system dialog: "Allow MYRA to record your screen?"
+    private val screenCaptureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val i = Intent(this, ScreenShareService::class.java).apply {
+                putExtra("resultCode", result.resultCode)
+                putExtra("data", result.data)
+            }
+            ContextCompat.startForegroundService(this, i)
+            viewModel.setSharing(true)
+            toast("Screen share ON — MYRA ab screen dekh sakti hai")
+        } else {
+            toast("Screen share cancel")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +77,7 @@ class MainActivity : AppCompatActivity() {
         val permissionsButton = findViewById<Button>(R.id.permissionsButton)
         val orbToggleButton = findViewById<Button>(R.id.orbToggleButton)
         val callRoleButton = findViewById<Button>(R.id.callRoleButton)
+        val screenShareButton = findViewById<Button>(R.id.screenShareButton)
 
         apiKeyInput.setText(Prefs.apiKey)
 
@@ -109,6 +131,21 @@ class MainActivity : AppCompatActivity() {
 
         callRoleButton.setOnClickListener {
             PermissionHelper.requestCallScreeningRole(this)
+        }
+
+        screenShareButton.setOnClickListener {
+            if (viewModel.isSharing.value == true) {
+                stopService(Intent(this, ScreenShareService::class.java))
+                viewModel.setSharing(false)
+                toast("Screen share OFF")
+            } else {
+                val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                screenCaptureLauncher.launch(mpm.createScreenCaptureIntent())
+            }
+        }
+
+        viewModel.isSharing.observe(this) { sharing ->
+            screenShareButton.text = if (sharing) "Screen Share: ON" else "Screen Share: OFF"
         }
 
         viewModel.messages.observe(this) {
