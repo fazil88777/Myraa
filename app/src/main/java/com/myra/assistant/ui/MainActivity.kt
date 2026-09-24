@@ -28,6 +28,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Crash catcher: save the stack trace if the app crashes, show it on next launch
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                Prefs.lastCrash = android.util.Log.getStackTraceString(throwable).take(1500)
+            } catch (_: Exception) {
+            }
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
         setContentView(R.layout.activity_main)
 
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
@@ -122,6 +133,17 @@ class MainActivity : AppCompatActivity() {
 
         if (!PermissionHelper.hasAllCore(this)) {
             PermissionHelper.requestCore(this, REQ_CORE)
+        }
+
+        // If the app crashed last time, show the reason
+        val lastCrash = Prefs.lastCrash
+        if (lastCrash.isNotEmpty()) {
+            Prefs.lastCrash = ""
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Pichli baar crash ki wajah")
+                .setMessage(lastCrash)
+                .setPositiveButton("OK", null)
+                .show()
         }
     }
 
