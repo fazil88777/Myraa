@@ -1,6 +1,7 @@
 package com.myra.assistant.ai
 
 import android.util.Base64
+import okhttp3.ByteString
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -59,6 +60,13 @@ class GeminiLiveClient(private val listener: Listener) {
                     } catch (e: JSONException) {
                         listener.onError("Bad message: ${e.message}")
                     }
+                }
+
+                // Gemini Live server sends ALL messages as BINARY frames (opcode 0x2).
+                // Without this overload, every server reply (incl. setupComplete)
+                // is silently dropped and the session hangs at "setting up...".
+                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                    onMessage(webSocket, bytes.utf8())
                 }
 
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -239,6 +247,19 @@ class GeminiLiveClient(private val listener: Listener) {
 
         if (root.has("setupComplete")) {
             listener.onSetupComplete()
+        }
+
+        // Server-side setup/error reports (surface them instead of hanging silently)
+        if (root.has("setupError")) {
+            val msg = root.optJSONObject("setupError")
+                ?.optJSONObject("error")?.optString("message") ?: "setup error"
+            listener.onError("Setup rejected: $msg")
+            return
+        }
+        if (root.has("error")) {
+            val msg = root.optJSONObject("error")?.optString("message") ?: "server error"
+            listener.onError("Server error: $msg")
+            return
         }
 
         if (root.has("serverContent")) {
