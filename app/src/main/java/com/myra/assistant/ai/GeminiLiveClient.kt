@@ -60,6 +60,8 @@ class GeminiLiveClient(private val listener: Listener) {
                         handleMessage(text)
                     } catch (e: JSONException) {
                         listener.onError("Bad message: ${e.message}")
+                    } catch (e: Exception) {
+                        listener.onError("Msg error ${e.javaClass.simpleName}: ${e.message}")
                     }
                 }
 
