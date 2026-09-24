@@ -44,6 +44,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var savedApiKey: String? = null
     private var lastUserSpeechAt = 0L
     private var lastModelActivityAt = 0L
+    // Updated ONLY when the model actually responds (audio/text/tool call).
+    // turnComplete also fires for the USER's turn, so it must not reset this,
+    // otherwise the watchdog can never detect a silent model.
+    private var lastModelResponseAt = 0L
     private var pendingInputMsgIndex = -1
     private var watchdogStarted = false
     private val watchdogHandler = Handler(Looper.getMainLooper())
@@ -66,7 +70,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun checkSessionHealth() {
         if (_isConnected.value != true) return
         val now = System.currentTimeMillis()
-        if (lastUserSpeechAt > lastModelActivityAt && now - lastUserSpeechAt > 30_000) {
+        // User spoke (or typed) but the model never actually responded -> stuck
+        if (lastUserSpeechAt > lastModelResponseAt && now - lastUserSpeechAt > 20_000) {
             _statusText.postValue("Reconnecting...")
             autoReconnect()
         }
@@ -123,6 +128,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         savedApiKey = apiKey
         lastUserSpeechAt = 0L
         lastModelActivityAt = System.currentTimeMillis()
+        lastModelResponseAt = System.currentTimeMillis()
         pendingInputMsgIndex = -1
         ensureWatchdog()
         _statusText.postValue("Connecting...")
@@ -136,6 +142,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             override fun onSetupComplete() {
                 _isConnected.postValue(true)
                 lastModelActivityAt = System.currentTimeMillis()
+                lastModelResponseAt = System.currentTimeMillis()
                 _statusText.postValue("Listening...")
                 try {
                     engine.startCapture { chunk ->
@@ -148,6 +155,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onAudioChunk(pcm24k: ByteArray) {
                 lastModelActivityAt = System.currentTimeMillis()
+                lastModelResponseAt = System.currentTimeMillis()
                 try {
                     audio?.playPcm24k(pcm24k)
                 } catch (_: Exception) {
@@ -156,6 +164,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onTextDelta(text: String) {
                 lastModelActivityAt = System.currentTimeMillis()
+                lastModelResponseAt = System.currentTimeMillis()
                 appendModelDelta(text)
             }
 
@@ -166,11 +175,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onTurnComplete() {
                 lastModelActivityAt = System.currentTimeMillis()
+                // NOTE: do NOT update lastModelResponseAt here — turnComplete also
+                // fires for the user's own turn, which would blind the watchdog.
                 turnHasModelMessage = false
                 pendingInputMsgIndex = -1
             }
 
             override fun onToolCall(id: String, name: String, argsJson: String) {
+                lastModelResponseAt = System.currentTimeMillis()
                 viewModelScope.launch(Dispatchers.IO) {
                     val result = try {
                         ToolHandler.execute(name, JSONObject(argsJson), getApplication())
