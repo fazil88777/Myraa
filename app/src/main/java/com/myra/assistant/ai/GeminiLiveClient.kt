@@ -158,17 +158,18 @@ class GeminiLiveClient(private val listener: Listener) {
                 .put("model", MODEL)
                 .put(
                     "generationConfig",
-                    JSONObject().put("responseModalities", JSONArray().put("AUDIO"))
-                )
-                .put(
-                    "speechConfig",
-                    JSONObject().put(
-                        "voiceConfig",
-                        JSONObject().put(
-                            "prebuiltVoiceConfig",
-                            JSONObject().put("voiceName", "Aoede")
+                    JSONObject()
+                        .put("responseModalities", JSONArray().put("AUDIO"))
+                        .put(
+                            "speechConfig",
+                            JSONObject().put(
+                                "voiceConfig",
+                                JSONObject().put(
+                                    "prebuiltVoiceConfig",
+                                    JSONObject().put("voiceName", "Aoede")
+                                )
+                            )
                         )
-                    )
                 )
                 .put("inputAudioTranscription", JSONObject())
                 .put(
