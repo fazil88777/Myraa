@@ -69,6 +69,16 @@ class MyraAccessibilityService : AccessibilityService() {
             }
         }
 
+        /** Press the system Back button. */
+        fun pressBack(): Boolean {
+            val svc = instance ?: return false
+            return try {
+                svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
         /**
          * Tap at exact screen coordinates. x and y are 0-1000
          * (0,0 = top-left, 1000,1000 = bottom-right).
