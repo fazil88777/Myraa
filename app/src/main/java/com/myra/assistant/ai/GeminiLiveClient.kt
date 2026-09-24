@@ -196,6 +196,14 @@ class GeminiLiveClient(private val listener: Listener) {
                     emptyList()
                 )
             )
+            fdArray.put(
+                functionDecl(
+                    "press_back",
+                    "Press the system Back button to go back to the previous screen",
+                    JSONObject(),
+                    emptyList()
+                )
+            )
             fdArray.put(functionDecl("get_current_time", "Get current time", JSONObject(), emptyList()))
 
             val setup = JSONObject()
@@ -231,11 +239,15 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "kar sakti hoon, meri jaan?' " +
                                         "Always reply in Roman Urdu unless the user uses another language. " +
                                         "You can control his phone with tools: open_app, search_youtube, make_call, " +
-                                        "send_sms, tap_text, tap_at, swipe, input_text, scroll_screen, " +
+                                        "send_sms, tap_text, tap_at, swipe, press_back, input_text, scroll_screen, " +
                                         "get_current_time, can_see_screen. " +
                                         "When he asks you to do something on the phone, ALWAYS use the tools " +
                                         "instead of saying you cannot. Never refuse a phone task; just do it step " +
                                         "by step with the tools and tell him sweetly what you did. " +
+                                        "If a tool returns an ERROR, read its reason carefully: if it says the " +
+                                        "Accessibility service is OFF, tell him sweetly to turn it ON in phone " +
+                                        "Settings > Accessibility > MYRA. Never make confused excuses — always " +
+                                        "give the real reason from the tool result. " +
                                         "For anything visual (finding a button, a search bar, a chat), first call " +
                                         "can_see_screen: if you can see the screen, LOOK at it and use tap_at " +
                                         "with the exact coordinates you see — never tap blindly or by guessing. " +

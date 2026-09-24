@@ -19,6 +19,12 @@ import java.util.Locale
  */
 object ToolHandler {
 
+    private const val A11Y_OFF =
+        "ERROR: MYRA Accessibility service is OFF — tell the user sweetly to turn it ON " +
+                "in phone Settings > Accessibility > MYRA, then try again"
+
+    private fun isA11yOn(): Boolean = MyraAccessibilityService.instance != null
+
     fun execute(name: String, args: JSONObject, context: Context): String {
         return try {
             when (name) {
@@ -33,34 +39,47 @@ object ToolHandler {
                 "answer_call" -> answerCall(context)
                 "reject_call" -> rejectCall(context)
                 "tap_text" ->
-                    if (MyraAccessibilityService.clickOnText(args.optString("text"))) "OK: tapped"
-                    else "ERROR: text not found"
+                    if (!isA11yOn()) A11Y_OFF
+                    else if (MyraAccessibilityService.clickOnText(args.optString("text"))) "OK: tapped"
+                    else "ERROR: text not found on screen"
                 "tap_at" -> {
-                    val x = args.optDouble("x", -1.0).toInt()
-                    val y = args.optDouble("y", -1.0).toInt()
-                    if (x in 0..1000 && y in 0..1000 &&
-                        MyraAccessibilityService.tapAt(x, y)
-                    ) "OK: tapped at $x,$y"
-                    else "ERROR: tap failed"
+                    if (!isA11yOn()) A11Y_OFF
+                    else {
+                        val x = args.optDouble("x", -1.0).toInt()
+                        val y = args.optDouble("y", -1.0).toInt()
+                        if (x in 0..1000 && y in 0..1000 &&
+                            MyraAccessibilityService.tapAt(x, y)
+                        ) "OK: tapped at $x,$y"
+                        else "ERROR: tap gesture failed"
+                    }
                 }
                 "swipe" -> {
-                    val x1 = args.optDouble("x1", -1.0).toInt()
-                    val y1 = args.optDouble("y1", -1.0).toInt()
-                    val x2 = args.optDouble("x2", -1.0).toInt()
-                    val y2 = args.optDouble("y2", -1.0).toInt()
-                    if (x1 in 0..1000 && y1 in 0..1000 && x2 in 0..1000 && y2 in 0..1000 &&
-                        MyraAccessibilityService.swipe(x1, y1, x2, y2)
-                    ) "OK: swiped"
-                    else "ERROR: swipe failed"
+                    if (!isA11yOn()) A11Y_OFF
+                    else {
+                        val x1 = args.optDouble("x1", -1.0).toInt()
+                        val y1 = args.optDouble("y1", -1.0).toInt()
+                        val x2 = args.optDouble("x2", -1.0).toInt()
+                        val y2 = args.optDouble("y2", -1.0).toInt()
+                        if (x1 in 0..1000 && y1 in 0..1000 && x2 in 0..1000 && y2 in 0..1000 &&
+                            MyraAccessibilityService.swipe(x1, y1, x2, y2)
+                        ) "OK: swiped"
+                        else "ERROR: swipe gesture failed"
+                    }
                 }
+                "press_back" ->
+                    if (!isA11yOn()) A11Y_OFF
+                    else if (MyraAccessibilityService.pressBack()) "OK: back pressed"
+                    else "ERROR: back failed"
                 "can_see_screen" ->
                     if (ScreenShareService.isSharing) "OK: you can see the user's screen"
                     else "ERROR: screen share is OFF"
                 "input_text" ->
-                    if (MyraAccessibilityService.inputText(args.optString("text"))) "OK: typed"
-                    else "ERROR: no input field"
+                    if (!isA11yOn()) A11Y_OFF
+                    else if (MyraAccessibilityService.inputText(args.optString("text"))) "OK: typed"
+                    else "ERROR: no input field focused"
                 "scroll_screen" ->
-                    if (MyraAccessibilityService.scrollForward()) "OK: scrolled"
+                    if (!isA11yOn()) A11Y_OFF
+                    else if (MyraAccessibilityService.scrollForward()) "OK: scrolled"
                     else "ERROR: cannot scroll"
                 "get_current_time" ->
                     "OK: " + SimpleDateFormat("HH:mm, d MMM yyyy", Locale.getDefault()).format(Date())
