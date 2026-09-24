@@ -39,4 +39,10 @@ object Prefs {
         set(value) {
             if (::sp.isInitialized) sp.edit().putString("last_caller", value).apply()
         }
+
+    var lastCrash: String
+        get() = if (::sp.isInitialized) sp.getString("last_crash", "") ?: "" else ""
+        set(value) {
+            if (::sp.isInitialized) sp.edit().putString("last_crash", value).apply()
+        }
 }
