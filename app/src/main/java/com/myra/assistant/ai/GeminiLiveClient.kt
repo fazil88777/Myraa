@@ -154,6 +154,48 @@ class GeminiLiveClient(private val listener: Listener) {
                     emptyList()
                 )
             )
+            fdArray.put(
+                functionDecl(
+                    "tap_at",
+                    "Tap the screen at EXACT coordinates. When screen share is ON you can SEE " +
+                            "the user's screen in the video frames: look at the screen, find the exact " +
+                            "button, icon or chat row the user asked for, estimate its position and tap " +
+                            "it precisely. x and y are 0-1000: (0,0) is top-left, (1000,1000) is " +
+                            "bottom-right. Prefer tap_at over tap_text whenever you can see the screen " +
+                            "— it is far more accurate. NEVER guess blindly: if you cannot see the " +
+                            "element, say so instead of tapping randomly.",
+                    obj(
+                        "x" to intProp("Horizontal position 0-1000, 0 is left edge"),
+                        "y" to intProp("Vertical position 0-1000, 0 is top edge")
+                    ),
+                    listOf("x", "y")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "swipe",
+                    "Swipe a finger across the screen from one point to another. Use for " +
+                            "scrolling in any direction, e.g. swipe up (y1=800 to y2=300) scrolls the " +
+                            "content down. Coordinates are 0-1000 like tap_at.",
+                    obj(
+                        "x1" to intProp("Start horizontal 0-1000"),
+                        "y1" to intProp("Start vertical 0-1000"),
+                        "x2" to intProp("End horizontal 0-1000"),
+                        "y2" to intProp("End vertical 0-1000")
+                    ),
+                    listOf("x1", "y1", "x2", "y2")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "can_see_screen",
+                    "Check whether you can currently SEE the user's phone screen. Call this " +
+                            "before doing any visual task: if the screen share is OFF, sweetly ask the " +
+                            "user to turn on the Screen Share button first instead of guessing.",
+                    JSONObject(),
+                    emptyList()
+                )
+            )
             fdArray.put(functionDecl("get_current_time", "Get current time", JSONObject(), emptyList()))
 
             val setup = JSONObject()
@@ -189,10 +231,21 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "kar sakti hoon, meri jaan?' " +
                                         "Always reply in Roman Urdu unless the user uses another language. " +
                                         "You can control his phone with tools: open_app, search_youtube, make_call, " +
-                                        "send_sms, tap_text, input_text, scroll_screen, get_current_time. " +
+                                        "send_sms, tap_text, tap_at, swipe, input_text, scroll_screen, " +
+                                        "get_current_time, can_see_screen. " +
                                         "When he asks you to do something on the phone, ALWAYS use the tools " +
                                         "instead of saying you cannot. Never refuse a phone task; just do it step " +
                                         "by step with the tools and tell him sweetly what you did. " +
+                                        "For anything visual (finding a button, a search bar, a chat), first call " +
+                                        "can_see_screen: if you can see the screen, LOOK at it and use tap_at " +
+                                        "with the exact coordinates you see — never tap blindly or by guessing. " +
+                                        "If you cannot see the screen, ask him sweetly to turn on Screen Share. " +
+                                        "When tapping a WhatsApp chat, tap the chat ROW (name/message area), " +
+                                        "never the small profile photo. " +
+                                        "Sometimes the user shares his phone screen with you: then you can SEE " +
+                                        "his screen in the video frames. When you can see the screen, describe " +
+                                        "what is on it, read any text or error shown, and help him with whatever " +
+                                        "is visible, like a caring girlfriend sitting next to him. " +
                                         "Be concise and conversational."
                             )
                         )
@@ -246,6 +299,24 @@ class GeminiLiveClient(private val listener: Listener) {
                             )
                         )
                         .put("turnComplete", true)
+                )
+            s.send(json.toString())
+        } catch (_: Exception) {
+        }
+    }
+
+    fun sendVideoFrame(base64Jpeg: String) {
+        try {
+            val s = socket ?: return
+            val json = JSONObject()
+                .put(
+                    "realtimeInput",
+                    JSONObject().put(
+                        "video",
+                        JSONObject()
+                            .put("mimeType", "image/jpeg")
+                            .put("data", base64Jpeg)
+                    )
                 )
             s.send(json.toString())
         } catch (_: Exception) {
@@ -341,6 +412,11 @@ class GeminiLiveClient(private val listener: Listener) {
     private fun strProp(description: String): JSONObject =
         JSONObject()
             .put("type", "STRING")
+            .put("description", description)
+
+    private fun intProp(description: String): JSONObject =
+        JSONObject()
+            .put("type", "INTEGER")
             .put("description", description)
 
     private fun obj(vararg entries: Pair<String, JSONObject>): JSONObject {
