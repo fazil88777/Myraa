@@ -1,9 +1,13 @@
 package com.myra.assistant.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Accessibility service backing the tap_text / input_text / scroll_screen tools.
@@ -63,6 +67,74 @@ class MyraAccessibilityService : AccessibilityService() {
             } catch (_: Exception) {
                 false
             }
+        }
+
+        /**
+         * Tap at exact screen coordinates. x and y are 0-1000
+         * (0,0 = top-left, 1000,1000 = bottom-right).
+         */
+        fun tapAt(x: Int, y: Int): Boolean {
+            val svc = instance ?: return false
+            return try {
+                val metrics = svc.resources.displayMetrics
+                val px = (x.coerceIn(0, 1000) / 1000f * metrics.widthPixels)
+                val py = (y.coerceIn(0, 1000) / 1000f * metrics.heightPixels)
+                val path = Path().apply { moveTo(px, py) }
+                val stroke = GestureDescription.StrokeDescription(path, 0, 80)
+                val gesture = GestureDescription.Builder().addStroke(stroke).build()
+                dispatchAndWait(svc, gesture)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /**
+         * Swipe from (x1,y1) to (x2,y2), coordinates 0-1000.
+         * Swipe up (finger moves up) scrolls content down, etc.
+         */
+        fun swipe(x1: Int, y1: Int, x2: Int, y2: Int): Boolean {
+            val svc = instance ?: return false
+            return try {
+                val metrics = svc.resources.displayMetrics
+                val w = metrics.widthPixels.toFloat()
+                val h = metrics.heightPixels.toFloat()
+                val path = Path().apply {
+                    moveTo(x1.coerceIn(0, 1000) / 1000f * w, y1.coerceIn(0, 1000) / 1000f * h)
+                    lineTo(x2.coerceIn(0, 1000) / 1000f * w, y2.coerceIn(0, 1000) / 1000f * h)
+                }
+                val stroke = GestureDescription.StrokeDescription(path, 0, 400)
+                val gesture = GestureDescription.Builder().addStroke(stroke).build()
+                dispatchAndWait(svc, gesture)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        private fun dispatchAndWait(
+            svc: AccessibilityService,
+            gesture: GestureDescription
+        ): Boolean {
+            var ok = false
+            val latch = CountDownLatch(1)
+            try {
+                svc.dispatchGesture(
+                    gesture,
+                    object : AccessibilityService.GestureResultCallback() {
+                        override fun onCompleted(gestureDescription: GestureDescription?) {
+                            ok = true
+                            latch.countDown()
+                        }
+
+                        override fun onCancelled(gestureDescription: GestureDescription?) {
+                            latch.countDown()
+                        }
+                    },
+                    null
+                )
+                latch.await(2, TimeUnit.SECONDS)
+            } catch (_: Exception) {
+            }
+            return ok
         }
 
         private fun findEditable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
