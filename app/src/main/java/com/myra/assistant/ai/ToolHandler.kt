@@ -7,6 +7,7 @@ import android.os.Build
 import android.telecom.TelecomManager
 import android.telephony.SmsManager
 import com.myra.assistant.service.MyraAccessibilityService
+import com.myra.assistant.service.ScreenShareService
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -34,6 +35,27 @@ object ToolHandler {
                 "tap_text" ->
                     if (MyraAccessibilityService.clickOnText(args.optString("text"))) "OK: tapped"
                     else "ERROR: text not found"
+                "tap_at" -> {
+                    val x = args.optDouble("x", -1.0).toInt()
+                    val y = args.optDouble("y", -1.0).toInt()
+                    if (x in 0..1000 && y in 0..1000 &&
+                        MyraAccessibilityService.tapAt(x, y)
+                    ) "OK: tapped at $x,$y"
+                    else "ERROR: tap failed"
+                }
+                "swipe" -> {
+                    val x1 = args.optDouble("x1", -1.0).toInt()
+                    val y1 = args.optDouble("y1", -1.0).toInt()
+                    val x2 = args.optDouble("x2", -1.0).toInt()
+                    val y2 = args.optDouble("y2", -1.0).toInt()
+                    if (x1 in 0..1000 && y1 in 0..1000 && x2 in 0..1000 && y2 in 0..1000 &&
+                        MyraAccessibilityService.swipe(x1, y1, x2, y2)
+                    ) "OK: swiped"
+                    else "ERROR: swipe failed"
+                }
+                "can_see_screen" ->
+                    if (ScreenShareService.isSharing) "OK: you can see the user's screen"
+                    else "ERROR: screen share is OFF"
                 "input_text" ->
                     if (MyraAccessibilityService.inputText(args.optString("text"))) "OK: typed"
                     else "ERROR: no input field"
