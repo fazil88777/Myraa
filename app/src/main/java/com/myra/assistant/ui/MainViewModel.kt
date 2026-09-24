@@ -1,6 +1,8 @@
 package com.myra.assistant.ui
 
 import android.app.Application
+import android.os.Handler
+import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -33,6 +35,67 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var turnHasModelMessage = false
 
+    // --- session health watchdog: if the user speaks but the model never replies,
+    // the Live session is stuck -> auto-reconnect instead of staying silent ---
+    private var savedApiKey: String? = null
+    private var lastUserSpeechAt = 0L
+    private var lastModelActivityAt = 0L
+    private var pendingInputMsgIndex = -1
+    private var watchdogStarted = false
+    private val watchdogHandler = Handler(Looper.getMainLooper())
+    private val watchdogRunnable = object : Runnable {
+        override fun run() {
+            try {
+                checkSessionHealth()
+            } catch (_: Exception) {
+            }
+            watchdogHandler.postDelayed(this, 10_000)
+        }
+    }
+
+    private fun ensureWatchdog() {
+        if (watchdogStarted) return
+        watchdogStarted = true
+        watchdogHandler.post(watchdogRunnable)
+    }
+
+    private fun checkSessionHealth() {
+        if (_isConnected.value != true) return
+        val now = System.currentTimeMillis()
+        if (lastUserSpeechAt > lastModelActivityAt && now - lastUserSpeechAt > 30_000) {
+            _statusText.postValue("Reconnecting...")
+            autoReconnect()
+        }
+    }
+
+    private fun autoReconnect() {
+        val key = savedApiKey ?: return
+        try {
+            stopSession()
+        } catch (_: Exception) {
+        }
+        watchdogHandler.postDelayed({
+            try {
+                startSession(key)
+            } catch (_: Exception) {
+            }
+        }, 1500)
+    }
+
+    private fun showInputTranscription(text: String) {
+        val l = _messages.value!!.toMutableList()
+        if (pendingInputMsgIndex >= 0 && pendingInputMsgIndex < l.size &&
+            l[pendingInputMsgIndex].role == "user"
+        ) {
+            val old = l[pendingInputMsgIndex]
+            l[pendingInputMsgIndex] = old.copy(text = text)
+        } else {
+            l.add(ChatMessage("user", text))
+            pendingInputMsgIndex = l.size - 1
+        }
+        _messages.postValue(l)
+    }
+
     private fun addMessage(m: ChatMessage) {
         val l = _messages.value!!.toMutableList()
         l.add(m)
@@ -53,6 +116,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startSession(apiKey: String) {
         if (_isConnected.value == true) return
+        savedApiKey = apiKey
+        lastUserSpeechAt = 0L
+        lastModelActivityAt = System.currentTimeMillis()
+        pendingInputMsgIndex = -1
+        ensureWatchdog()
         _statusText.postValue("Connecting...")
         val engine = AudioEngine()
         audio = engine
@@ -63,6 +131,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onSetupComplete() {
                 _isConnected.postValue(true)
+                lastModelActivityAt = System.currentTimeMillis()
                 _statusText.postValue("Listening...")
                 try {
                     engine.startCapture { chunk ->
@@ -74,6 +143,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             override fun onAudioChunk(pcm24k: ByteArray) {
+                lastModelActivityAt = System.currentTimeMillis()
                 try {
                     audio?.playPcm24k(pcm24k)
                 } catch (_: Exception) {
@@ -81,11 +151,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             override fun onTextDelta(text: String) {
+                lastModelActivityAt = System.currentTimeMillis()
                 appendModelDelta(text)
             }
 
+            override fun onInputTranscription(text: String) {
+                lastUserSpeechAt = System.currentTimeMillis()
+                showInputTranscription(text)
+            }
+
             override fun onTurnComplete() {
+                lastModelActivityAt = System.currentTimeMillis()
                 turnHasModelMessage = false
+                pendingInputMsgIndex = -1
             }
 
             override fun onToolCall(id: String, name: String, argsJson: String) {
@@ -121,6 +199,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendTypedText(text: String) {
         addMessage(ChatMessage("user", text))
+        pendingInputMsgIndex = -1
+        lastUserSpeechAt = System.currentTimeMillis()
         client?.sendText(text)
     }
 
@@ -143,6 +223,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        try {
+            watchdogHandler.removeCallbacks(watchdogRunnable)
+        } catch (_: Exception) {
+        }
         try {
             audio?.release()
         } catch (_: Exception) {
