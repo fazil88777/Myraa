@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark app background with glowing magenta side edges (MAX style) -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#141238"
+                android:endColor="#050518" />
+        </shape>
+    </item>
+    <item
+        android:width="16dp"
+        android:gravity="left">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="0"
+                android:startColor="#E040FB"
+                android:endColor="#00E040FB" />
+        </shape>
+    </item>
+    <item
+        android:width="16dp"
+        android:gravity="right">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="180"
+                android:startColor="#E040FB"
+                android:endColor="#00E040FB" />
+        </shape>
+    </item>
+</layer-list>
