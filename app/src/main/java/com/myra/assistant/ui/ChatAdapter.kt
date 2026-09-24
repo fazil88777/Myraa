@@ -3,6 +3,7 @@ package com.myra.assistant.ui
 import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -20,12 +21,14 @@ class ChatAdapter : RecyclerView.Adapter<ChatAdapter.VH>() {
         notifyDataSetChanged()
     }
 
-    class VH(val textView: TextView) : RecyclerView.ViewHolder(textView)
+    class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val textView: TextView = itemView.findViewById(R.id.messageText)
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_chat_message, parent, false)
-        return VH(view.findViewById(R.id.messageText))
+        return VH(view)
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
