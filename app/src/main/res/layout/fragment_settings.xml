@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Settings"
+            android:textColor="#FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:letterSpacing="0.1"
+            android:text="GEMINI API KEY"
+            android:textColor="#9A9AC0"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/settingsApiKeyInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_input"
+            android:hint="Gemini API key"
+            android:inputType="textPassword"
+            android:padding="14dp"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#6A6A8A" />
+
+        <Button
+            android:id="@+id/settingsSaveKeyButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_pill"
+            android:paddingLeft="24dp"
+            android:paddingRight="24dp"
+            android:text="Save Key"
+            android:textColor="#FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:letterSpacing="0.1"
+            android:text="PERMISSIONS"
+            android:textColor="#9A9AC0"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/settingsPermissionsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_pill"
+            android:text="Grant Permissions"
+            android:textColor="#FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Tap / scroll ke liye Accessibility zaroori hai:"
+            android:textColor="#9A9AC0"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/settingsA11yStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Accessibility: checking..."
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:letterSpacing="0.1"
+            android:text="CALL SCREENING"
+            android:textColor="#9A9AC0"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/settingsCallRoleButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_pill"
+            android:text="Call Screening Role"
+            android:textColor="#FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:letterSpacing="0.1"
+            android:text="FLOATING ORB"
+            android:textColor="#9A9AC0"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/settingsOrbButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_pill"
+            android:text="Floating Orb: OFF"
+            android:textColor="#FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="26dp"
+            android:letterSpacing="0.1"
+            android:text="ABOUT"
+            android:textColor="#9A9AC0"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="16dp"
+            android:text="MYRA Voice Assistant • v2.0\nPowered by Gemini Live"
+            android:textColor="#6A6A8A"
+            android:textSize="13sp" />
+
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- MYRA face = connect / disconnect button -->
+    <FrameLayout
+        android:layout_width="210dp"
+        android:layout_height="210dp">
+
+        <View
+            android:layout_width="210dp"
+            android:layout_height="210dp"
+            android:background="@drawable/bg_power_ring" />
+
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/powerFaceButton"
+            android:layout_width="165dp"
+            android:layout_height="165dp"
+            android:layout_gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:scaleType="centerCrop"
+            android:src="@drawable/myra_face"
+            app:shapeAppearanceOverlay="@style/CircleImage" />
+    </FrameLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:letterSpacing="0.18"
+        android:text="MYRA VOICE ASSISTANT"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <com.myra.assistant.ui.WaveformView
+        android:id="@+id/waveformView"
+        android:layout_width="230dp"
+        android:layout_height="34dp"
+        android:layout_marginTop="6dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_pill"
+        android:paddingLeft="14dp"
+        android:paddingTop="6dp"
+        android:paddingRight="14dp"
+        android:paddingBottom="6dp"
+        android:text="✦ VERSION 2.0 ✦"
+        android:textColor="#B388FF"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/homeStatusPill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_pill"
+        android:paddingLeft="16dp"
+        android:paddingTop="8dp"
+        android:paddingRight="16dp"
+        android:paddingBottom="8dp"
+        android:text="● Idle"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp" />
+
+    <Button
+        android:id="@+id/homeScreenShareButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_pill"
+        android:paddingLeft="20dp"
+        android:paddingRight="20dp"
+        android:text="Screen Share: OFF"
+        android:textColor="#FFFFFF" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:letterSpacing="0.12"
+        android:text="CURRENT LOCATION"
+        android:textColor="#9A9AC0"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/locationText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:gravity="center"
+        android:text="GPS • --:--"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/homeChatRecycler"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/homeMessageInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/bg_input"
+            android:hint="Type a message..."
+            android:padding="14dp"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#6A6A8A" />
+
+        <Button
+            android:id="@+id/homeSendButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_pill"
+            android:text="Send"
+            android:textColor="#FFFFFF" />
+    </LinearLayout>
+
+</LinearLayout>
