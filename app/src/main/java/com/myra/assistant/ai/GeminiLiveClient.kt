@@ -1,7 +1,6 @@
 package com.myra.assistant.ai
 
 import android.util.Base64
-import okhttp3.ByteString
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -11,6 +10,7 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import okio.ByteString
 
 /**
  * WebSocket client for the Gemini Live (BidiGenerateContent) streaming API.
