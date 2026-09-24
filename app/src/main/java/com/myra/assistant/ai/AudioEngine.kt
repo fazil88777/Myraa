@@ -32,7 +32,7 @@ class AudioEngine {
                 AudioFormat.ENCODING_PCM_16BIT
             )
             val rec = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                      MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 16000,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
