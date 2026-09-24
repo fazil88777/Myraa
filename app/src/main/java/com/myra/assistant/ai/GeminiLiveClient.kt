@@ -26,11 +26,11 @@ class GeminiLiveClient(private val listener: Listener) {
         fun onToolCall(id: String, name: String, argsJson: String)
         fun onInterrupted()
         fun onError(msg: String)
-        fun onClosed()
+        fun onClosed(reason: String)
     }
 
     companion object {
-            const val MODEL = "models/gemini-3.1-flash-live-preview"
+        const val MODEL = "models/gemini-3.1-flash-live-preview"
         const val BASE_URL =
             "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key="
     }
@@ -62,11 +62,11 @@ class GeminiLiveClient(private val listener: Listener) {
                 }
 
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                    listener.onClosed()
+                    listener.onClosed("code=$code reason=$reason")
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    listener.onClosed()
+                    listener.onClosed("code=$code reason=$reason")
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
