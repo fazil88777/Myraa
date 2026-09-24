@@ -110,9 +110,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _statusText.postValue("Error: $msg")
             }
 
-            override fun onClosed() {
+            override fun onClosed(reason: String) {
                 _isConnected.postValue(false)
-                _statusText.postValue("Disconnected")
+                _statusText.postValue("Disconnected: $reason")
             }
         })
         client = c
