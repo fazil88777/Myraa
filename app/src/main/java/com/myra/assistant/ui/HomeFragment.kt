@@ -36,6 +36,11 @@ class HomeFragment : Fragment() {
     private lateinit var vm: MainViewModel
     private lateinit var adapter: ChatAdapter
 
+    // Location permission is asked at most ONCE per view lifetime.
+    // (Re-asking on every denial caused an infinite request loop
+    //  and a StackOverflowError crash.)
+    private var locationPermissionRequested = false
+
     private val waveLoop = Handler(Looper.getMainLooper())
     private var waveRunning = false
     private val waveTick = object : Runnable {
@@ -128,6 +133,7 @@ class HomeFragment : Fragment() {
     override fun onDestroyView() {
         waveRunning = false
         waveLoop.removeCallbacks(waveTick)
+        locationPermissionRequested = false
         super.onDestroyView()
     }
 
@@ -142,7 +148,12 @@ class HomeFragment : Fragment() {
                 Manifest.permission.ACCESS_COARSE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), 3001)
+            // Ask only once: if the user denies, just show the time label
+            // instead of asking again (which crashed the app in a loop).
+            if (!locationPermissionRequested) {
+                locationPermissionRequested = true
+                requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), 3001)
+            }
             tv.text = "GPS • $time"
             return
         }
@@ -183,7 +194,11 @@ class HomeFragment : Fragment() {
         grantResults: IntArray
     ) {
         if (requestCode == 3001 && view != null) {
-            updateLocation(requireView())
+            // Refresh the location label ONLY when the user granted it.
+            // On denial do nothing — never auto-ask again.
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                updateLocation(requireView())
+            }
         }
     }
 }
