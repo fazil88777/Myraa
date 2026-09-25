@@ -86,6 +86,15 @@ object ToolHandler {
                     else "ERROR: cannot scroll"
                 "get_current_time" ->
                     "OK: " + SimpleDateFormat("HH:mm, d MMM yyyy", Locale.getDefault()).format(Date())
+                "save_user_name" ->
+                    {
+                        val n = args.optString("name", "").trim()
+                        if (n.isEmpty()) "ERROR: no name given"
+                        else {
+                            com.myra.assistant.util.Prefs.userName = n
+                            "OK: name saved as $n"
+                        }
+                    }
                 else -> "ERROR: unknown tool $name"
             }
         } catch (e: Exception) {
