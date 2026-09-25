@@ -53,6 +53,35 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
             android:letterSpacing="0.1"
+            android:text="GOOGLE ACCOUNT"
+            android:textColor="#9A9AC0"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/settingsGoogleStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Not logged in"
+            android:textColor="#9A9AC0"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/settingsGoogleButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_pill"
+            android:paddingLeft="24dp"
+            android:paddingRight="24dp"
+            android:text="Login with Gmail"
+            android:textColor="#FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:letterSpacing="0.1"
             android:text="GEMINI API KEY"
             android:textColor="#9A9AC0"
             android:textSize="12sp" />
