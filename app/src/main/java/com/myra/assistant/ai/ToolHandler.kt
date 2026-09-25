@@ -79,7 +79,7 @@ object ToolHandler {
                     else "ERROR: no input field focused"
                 "scroll_screen" ->
                     if (!isA11yOn()) A11Y_OFF
-                    else if (MyraAccessibilityService.scrollForward()) "OK: scrolled"
+                    else if (MyraAccessibilityService.scroll(args.optString("direction", "down"))) "OK: scrolled"
                     else "ERROR: cannot scroll"
                 "get_current_time" ->
                     "OK: " + SimpleDateFormat("HH:mm, d MMM yyyy", Locale.getDefault()).format(Date())
