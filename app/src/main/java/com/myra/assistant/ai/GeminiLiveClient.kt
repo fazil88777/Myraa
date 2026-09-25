@@ -135,8 +135,13 @@ class GeminiLiveClient(private val listener: Listener) {
             fdArray.put(functionDecl("reject_call", "Reject/end the call", JSONObject(), emptyList()))
             fdArray.put(
                 functionDecl(
-                    "tap_text", "Tap on-screen text",
-                    obj("text" to strProp("Visible text to tap")),
+                    "tap_text",
+                    "Tap on-screen text OR an icon button by its name. Matches visible text " +
+                            "first, then icon buttons by their description - e.g. 'Send' taps the " +
+                            "WhatsApp send (paper-plane) button, 'Voice call' / 'Video call' tap the " +
+                            "call icons in a chat. Prefer this over tap_at whenever the target " +
+                            "has a name: it is far more accurate than guessing coordinates.",
+                    obj("text" to strProp("Visible text or button name to tap, e.g. 'Send'")),
                     listOf("text")
                 )
             )
@@ -258,6 +263,18 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "his screen in the video frames. When you can see the screen, describe " +
                                         "what is on it, read any text or error shown, and help him with whatever " +
                                         "is visible, like a caring girlfriend sitting next to him. " +
+                                        "After EVERY tool call, ALWAYS speak a short, sweet confirmation of what " +
+                                        "you just did (for example: 'Ho gaya jaan, Noor ki chat khol di!'). " +
+                                        "Never do a task silently - the user must always hear your voice respond. " +
+                                        "To send a WhatsApp message: open_app WhatsApp, tap_text the person's " +
+                                        "chat name, input_text your message, then tap_text 'Send' to press the " +
+                                        "send button. To call someone on WhatsApp: open their chat the same way, " +
+                                        "then tap_text 'Voice call' for a voice call or 'Video call' for a video " +
+                                        "call. make_call is ONLY for normal phone calls through the dialer - " +
+                                        "never use it for WhatsApp. " +
+                                        "Prefer tap_text over tap_at whenever the target has a name or label - " +
+                                        "coordinates are only a last resort when you can clearly see the element " +
+                                        "on screen. " +
                                         "Be concise and conversational."
                             )
                         )
