@@ -52,7 +52,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var watchdogStarted = false
     private val watchdogHandler = Handler(Looper.getMainLooper())
     // Nudge timer: reminds the model to speak after a tool call if it stays silent.
-    private val nudgeHandler = Handler(Looper.getMainLooper())    private val watchdogRunnable = object : Runnable {
+    private val nudgeHandler = Handler(Looper.getMainLooper())
+
+    private val watchdogRunnable = object : Runnable {
         override fun run() {
             try {
                 checkSessionHealth()
