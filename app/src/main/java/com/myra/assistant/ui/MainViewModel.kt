@@ -51,7 +51,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingInputMsgIndex = -1
     private var watchdogStarted = false
     private val watchdogHandler = Handler(Looper.getMainLooper())
-    private val watchdogRunnable = object : Runnable {
+    // Nudge timer: reminds the model to speak after a tool call if it stays silent.
+    private val nudgeHandler = Handler(Looper.getMainLooper())    private val watchdogRunnable = object : Runnable {
         override fun run() {
             try {
                 checkSessionHealth()
@@ -190,6 +191,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         "ERROR: ${e.message}"
                     }
                     client?.sendToolResponse(id, name, result)
+                    // Spoken-confirmation nudge: the model sometimes finishes a
+                    // tool call without saying anything. If no model audio/text
+                    // follows within 7 seconds, ask it to confirm briefly.
+                    val sentAt = System.currentTimeMillis()
+                    nudgeHandler.postDelayed({
+                        if (_isConnected.value == true && lastModelResponseAt <= sentAt) {
+                            client?.sendText("Mukhtasir mein pyaar se batao ke tumne abhi kya kiya.")
+                        }
+                    }, 7000)
                 }
             }
 
