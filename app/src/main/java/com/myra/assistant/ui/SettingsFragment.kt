@@ -17,9 +17,8 @@ import com.myra.assistant.util.PermissionHelper
 import com.myra.assistant.util.Prefs
 
 /**
- * Settings tab: API key, permissions, call screening role,
- * floating orb toggle, about. Everything that used to sit on
- * the main screen now lives here.
+ * Settings tab: API key, Aura Control (orb design + wallpaper),
+ * permissions, call screening role, floating orb toggle, about.
  */
 class SettingsFragment : Fragment() {
 
@@ -28,7 +27,7 @@ class SettingsFragment : Fragment() {
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
-        savedInstanceState: Bundle?
+        savedInstanceState: Bundle?,
     ): View {
         return inflater.inflate(R.layout.fragment_settings, container, false)
     }
@@ -39,10 +38,37 @@ class SettingsFragment : Fragment() {
 
         val apiInput = view.findViewById<EditText>(R.id.settingsApiKeyInput)
         apiInput.setText(Prefs.apiKey)
-
         view.findViewById<Button>(R.id.settingsSaveKeyButton).setOnClickListener {
             Prefs.apiKey = apiInput.text.toString().trim()
             toast("API key saved")
+        }
+
+        // ---- AURA CONTROL: orb design (home screen orb changes) ----
+        view.findViewById<Button>(R.id.auraOrbCrimson).setOnClickListener {
+            Prefs.orbDesign = "crimson"
+            toast("Orb: Crimson 🔴 — Home par dekho")
+        }
+        view.findViewById<Button>(R.id.auraOrbAzure).setOnClickListener {
+            Prefs.orbDesign = "azure"
+            toast("Orb: Azure 🔵 — Home par dekho")
+        }
+        view.findViewById<Button>(R.id.auraOrbViolet).setOnClickListener {
+            Prefs.orbDesign = "violet"
+            toast("Orb: Violet 🟣 — Home par dekho")
+        }
+
+        // ---- AURA CONTROL: wallpaper (home screen background) ----
+        view.findViewById<Button>(R.id.auraWpMidnight).setOnClickListener {
+            Prefs.wallpaper = "midnight"
+            toast("Wallpaper: Midnight 🌑 — Home par dekho")
+        }
+        view.findViewById<Button>(R.id.auraWpCrimson).setOnClickListener {
+            Prefs.wallpaper = "crimson"
+            toast("Wallpaper: Crimson 🔴 — Home par dekho")
+        }
+        view.findViewById<Button>(R.id.auraWpAzure).setOnClickListener {
+            Prefs.wallpaper = "azure"
+            toast("Wallpaper: Azure 🔵 — Home par dekho")
         }
 
         view.findViewById<Button>(R.id.settingsPermissionsButton).setOnClickListener {

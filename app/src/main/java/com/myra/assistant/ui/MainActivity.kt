@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
-import android.widget.LinearLayout
+import android.view.View
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,7 +19,7 @@ import com.myra.assistant.util.Prefs
 import java.util.Calendar
 
 /**
- * MAX-style host: header (MYRA + greeting + gear), tab container,
+ * Host: header (MYRA + greeting + gear), tab container,
  * bottom navigation (Home / History / Settings / Features).
  * All voice/session logic lives in the shared MainViewModel.
  */
@@ -62,19 +62,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(R.layout.activity_main)
-
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
-
         findViewById<TextView>(R.id.greetingText).text = greeting()
-
-        findViewById<TextView>(R.id.settingsGearButton).setOnClickListener {
+        findViewById<View>(R.id.settingsGearButton).setOnClickListener {
             selectTab("settings")
         }
-
-        findViewById<LinearLayout>(R.id.navHome).setOnClickListener { selectTab("home") }
-        findViewById<LinearLayout>(R.id.navHistory).setOnClickListener { selectTab("history") }
-        findViewById<LinearLayout>(R.id.navSettings).setOnClickListener { selectTab("settings") }
-        findViewById<LinearLayout>(R.id.navFeatures).setOnClickListener { selectTab("features") }
+        findViewById<View>(R.id.navHome).setOnClickListener { selectTab("home") }
+        findViewById<View>(R.id.navHistory).setOnClickListener { selectTab("history") }
+        findViewById<View>(R.id.navSettings).setOnClickListener { selectTab("settings") }
+        findViewById<View>(R.id.navFeatures).setOnClickListener { selectTab("features") }
 
         if (savedInstanceState == null) selectTab("home")
 
@@ -119,7 +115,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun paintNav(tab: String) {
-        val active = 0xFFB388FF.toInt()
+        val active = 0xFFFF5252.toInt() // MYRA red
         val idle = 0xFF6A6A8A.toInt()
         val ids = mapOf(
             "home" to Pair(R.id.navHomeIcon, R.id.navHomeLabel),

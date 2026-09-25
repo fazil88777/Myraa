@@ -78,6 +78,31 @@ class HomeFragment : Fragment() {
         val msgInput = view.findViewById<EditText>(R.id.homeMessageInput)
         val sendBtn = view.findViewById<Button>(R.id.homeSendButton)
 
+        // Aura orb: design from Settings (crimson / azure / violet)
+        val orbRes = when (Prefs.orbDesign) {
+            "azure" -> R.drawable.orb_azure
+            "violet" -> R.drawable.orb_violet
+            else -> R.drawable.orb_crimson
+        }
+        faceBtn.setImageResource(orbRes)
+
+        // Orb keeps rotating slowly (live animation)
+        val orbSpin = android.animation.ObjectAnimator.ofFloat(faceBtn, "rotation", 0f, 360f).apply {
+            duration = 24000L
+            repeatCount = android.animation.ObjectAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
+        }
+        orbSpin.start()
+
+        // Home wallpaper from Settings (midnight / crimson / azure)
+        val homeRoot = view.findViewById<android.widget.LinearLayout>(R.id.homeRoot)
+        val wpRes = when (Prefs.wallpaper) {
+            "crimson" -> R.drawable.wallpaper_crimson
+            "azure" -> R.drawable.wallpaper_midnight
+            else -> R.drawable.bg_app
+        }
+        homeRoot.background = ContextCompat.getDrawable(requireContext(), wpRes)
+
         // Tap MYRA's face = Connect / Disconnect
         faceBtn.setOnClickListener {
             if (vm.isConnected.value == true) {
