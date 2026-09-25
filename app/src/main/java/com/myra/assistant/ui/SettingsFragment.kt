@@ -1,5 +1,6 @@
 package com.myra.assistant.ui
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -9,10 +10,14 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.common.api.ApiException
 import com.myra.assistant.R
 import com.myra.assistant.service.FloatingOrbService
+import com.myra.assistant.util.AuthManager
 import com.myra.assistant.util.PermissionHelper
 import com.myra.assistant.util.Prefs
 
@@ -23,6 +28,26 @@ import com.myra.assistant.util.Prefs
 class SettingsFragment : Fragment() {
 
     private var orbRunning = false
+
+    private val googleLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode != Activity.RESULT_OK) {
+                toast("Login cancelled")
+                return@registerForActivityResult
+            }
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                if (Prefs.userName.isBlank() && !account.displayName.isNullOrBlank()) {
+                    Prefs.userName = account.displayName!!.trim()
+                    view?.findViewById<EditText>(R.id.settingsNameInput)?.setText(Prefs.userName)
+                }
+                refreshGoogleUi()
+                toast("Login ho gaya, boss! ✅")
+            } catch (e: ApiException) {
+                toast("Login failed (${e.statusCode})")
+            }
+        }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -50,6 +75,9 @@ class SettingsFragment : Fragment() {
             Prefs.userName = nameInput.text.toString().trim()
             toast("Name saved, boss!")
         }
+
+        // ---- Google account (Gmail login / signup) ----
+        refreshGoogleUi()
 
         // ---- AURA CONTROL: orb design (home screen orb changes) ----
         view.findViewById<Button>(R.id.auraOrbCrimson).setOnClickListener {
@@ -116,6 +144,26 @@ class SettingsFragment : Fragment() {
         view?.findViewById<TextView>(R.id.settingsA11yStatus)?.apply {
             text = if (ok) "Accessibility: ON ✓" else "Accessibility: OFF ✗"
             setTextColor(if (ok) 0xFF69F0AE.toInt() else 0xFFFF8A80.toInt())
+        }
+    }
+
+    private fun refreshGoogleUi() {
+        val v = view ?: return
+        val status = v.findViewById<TextView>(R.id.settingsGoogleStatus)
+        val btn = v.findViewById<Button>(R.id.settingsGoogleButton)
+        val account = AuthManager.signedInAccount(requireContext())
+        if (account != null) {
+            status.text = "Logged in: ${account.email}"
+            btn.text = "Logout"
+            btn.setOnClickListener {
+                AuthManager.signOut(requireContext()) { refreshGoogleUi() }
+            }
+        } else {
+            status.text = "Not logged in"
+            btn.text = "Login with Gmail"
+            btn.setOnClickListener {
+                googleLauncher.launch(AuthManager.client(requireContext()).signInIntent)
+            }
         }
     }
 
