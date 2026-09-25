@@ -43,6 +43,14 @@ class SettingsFragment : Fragment() {
             toast("API key saved")
         }
 
+        // ---- Your name (MYRA asks this too, and addresses you by name) ----
+        val nameInput = view.findViewById<EditText>(R.id.settingsNameInput)
+        nameInput.setText(Prefs.userName)
+        view.findViewById<Button>(R.id.settingsSaveNameButton).setOnClickListener {
+            Prefs.userName = nameInput.text.toString().trim()
+            toast("Name saved, boss!")
+        }
+
         // ---- AURA CONTROL: orb design (home screen orb changes) ----
         view.findViewById<Button>(R.id.auraOrbCrimson).setOnClickListener {
             Prefs.orbDesign = "crimson"
