@@ -19,23 +19,44 @@ class MyraAccessibilityService : AccessibilityService() {
         @Volatile
         var instance: MyraAccessibilityService? = null
 
+        /**
+         * Tap something by its visible text OR by an icon button's description.
+         * Text matches are tried first; then every node on screen is checked for
+         * a content-description containing the query (this is how icon buttons
+         * like WhatsApp's "Send" paper-plane or the "Voice call" icon get tapped).
+         */
         fun clickOnText(text: String): Boolean {
             if (text.isBlank()) return false
             val root = instance?.rootInActiveWindow ?: return false
             return try {
+                // 1) visible text matches (existing behavior)
                 val nodes = root.findAccessibilityNodeInfosByText(text)
                 for (n in nodes) {
-                    var node: AccessibilityNodeInfo? = n
-                    var guard = 0
-                    while (node != null && !node.isClickable && guard < 8) {
-                        node = node.parent
-                        guard++
-                    }
-                    if (node != null && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                        return true
-                    }
+                    if (clickNode(n)) return true
+                }
+                // 2) icon buttons: match content-description, e.g. "Send"
+                val q = text.lowercase()
+                val all = mutableListOf<AccessibilityNodeInfo>()
+                collectAll(root, all)
+                for (n in all) {
+                    val desc = n.contentDescription?.toString()?.lowercase() ?: continue
+                    if (desc.contains(q) && clickNode(n)) return true
                 }
                 false
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        private fun clickNode(start: AccessibilityNodeInfo): Boolean {
+            return try {
+                var node: AccessibilityNodeInfo? = start
+                var guard = 0
+                while (node != null && !node.isClickable && guard < 8) {
+                    node = node.parent
+                    guard++
+                }
+                node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
             } catch (_: Exception) {
                 false
             }
@@ -183,6 +204,17 @@ class MyraAccessibilityService : AccessibilityService() {
             if (node.isScrollable) out.add(node)
             for (i in 0 until node.childCount) {
                 collectScrollable(node.getChild(i), out)
+            }
+        }
+
+        private fun collectAll(
+            node: AccessibilityNodeInfo?,
+            out: MutableList<AccessibilityNodeInfo>
+        ) {
+            if (node == null) return
+            out.add(node)
+            for (i in 0 until node.childCount) {
+                collectAll(node.getChild(i), out)
             }
         }
     }
