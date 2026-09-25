@@ -59,15 +59,33 @@ class MyraAccessibilityService : AccessibilityService() {
             }
         }
 
-        fun scrollForward(): Boolean {
+        /**
+         * Scroll the screen up or down. Tries EVERY scrollable node on the
+         * screen (deepest first) until one actually moves, so it no longer
+         * gives up on the first stubborn container.
+         */
+        fun scroll(direction: String): Boolean {
             val root = instance?.rootInActiveWindow ?: return false
             return try {
-                val s = findScrollable(root)
-                s?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) == true
+                val forward = !direction.equals("up", ignoreCase = true)
+                val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                             else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                val nodes = mutableListOf<AccessibilityNodeInfo>()
+                collectScrollable(root, nodes)
+                for (n in nodes.asReversed()) {
+                    try {
+                        if (n.performAction(action)) return true
+                    } catch (_: Exception) {
+                    }
+                }
+                false
             } catch (_: Exception) {
                 false
             }
         }
+
+        /** Old wrapper, kept for safety. */
+        fun scrollForward(): Boolean = scroll("down")
 
         /** Press the system Back button. */
         fun pressBack(): Boolean {
@@ -157,14 +175,15 @@ class MyraAccessibilityService : AccessibilityService() {
             return null
         }
 
-        private fun findScrollable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-            if (node == null) return null
-            if (node.isScrollable) return node
+        private fun collectScrollable(
+            node: AccessibilityNodeInfo?,
+            out: MutableList<AccessibilityNodeInfo>
+        ) {
+            if (node == null) return
+            if (node.isScrollable) out.add(node)
             for (i in 0 until node.childCount) {
-                val r = findScrollable(node.getChild(i))
-                if (r != null) return r
+                collectScrollable(node.getChild(i), out)
             }
-            return null
         }
     }
 
