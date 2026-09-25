@@ -40,6 +40,9 @@ class GeminiLiveClient(private val listener: Listener) {
     private val client: OkHttpClient =
         OkHttpClient.Builder()
             .readTimeout(0, TimeUnit.MILLISECONDS)
+            // WebSocket ping keeps idle mobile connections alive (NAT timeouts
+            // silently kill the socket after ~1-2 min of quiet otherwise).
+            .pingInterval(25, TimeUnit.SECONDS)
             .build()
 
     private var socket: WebSocket? = null
@@ -225,6 +228,51 @@ class GeminiLiveClient(private val listener: Listener) {
             fdArray.put(functionDecl("get_current_time", "Get current time", JSONObject(), emptyList()))
             fdArray.put(
                 functionDecl(
+                    "web_search",
+                    "Search the internet for ANYTHING about the outside world: latest news, " +
+                            "trending movies, product prices and listings (OLX, Facebook Marketplace, " +
+                            "Daraz), general knowledge. Use this whenever the user asks about current " +
+                            "events, trends, shopping or anything you do not already know. Returns top " +
+                            "results with titles, snippets and links: read the useful ones aloud and " +
+                            "mention the links.",
+                    obj("query" to strProp("Search query in English for best results, e.g. 'trending movies 2026' or 'used laptop OLX Lahore'")),
+                    listOf("query")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "read_webpage",
+                    "Open a web page link and read its text. Use after web_search when you need " +
+                            "full details from a specific result, e.g. a product's exact price on OLX " +
+                            "or the full text of a news article. Then tell the user what you found.",
+                    obj("url" to strProp("Full page URL from the search results")),
+                    listOf("url")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "get_weather",
+                    "Get LIVE current weather for any city: temperature, condition, rain chance, " +
+                            "humidity, wind. Use whenever the user asks about mausam, weather or barish.",
+                    obj("location" to strProp("City name, e.g. 'Lahore' or 'Karachi'")),
+                    listOf("location")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "save_script",
+                    "Write a script, story, essay or any long text into a .txt file in the phone's " +
+                            "Downloads/MYRA folder so the user can open it later in the Files app. " +
+                            "Use for YouTube drama scripts and anything the user asks you to write down.",
+                    obj(
+                        "title" to strProp("Short file title, e.g. 'drama_script'"),
+                        "script" to strProp("The FULL text content to save")
+                    ),
+                    listOf("title", "script")
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "save_user_name",
                     "Save the user's name so MYRA can address him by name. Call this " +
                             "as soon as the user tells you his name.",
@@ -272,6 +320,15 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "You can control his phone with tools: open_app, search_youtube, make_call, " +
                                         "send_sms, tap_text, tap_at, swipe, press_back, input_text, scroll_screen, " +
                                         "get_current_time, can_see_screen, get_screen_elements. " +
+                                        "You also have world-knowledge tools: web_search for news, trending " +
+                                        "movies, product hunting on OLX/Marketplace/Daraz and anything about " +
+                                        "the outside world (search in English, read the best results aloud " +
+                                        "with prices and links); read_webpage to open a link and read its " +
+                                        "full details; get_weather for live mausam of any city; " +
+                                        "save_script to write scripts or long texts into a file in " +
+                                        "Downloads/MYRA. " +
+                                        "Do EXACTLY what the user says, step by step, the way he says it — " +
+                                        "never improvise a different plan or skip his steps. " +
                                         "When he asks you to do something on the phone, ALWAYS use the tools " +
                                         "instead of saying you cannot. Never refuse a phone task; just do it step " +
                                         "by step with the tools and tell him crisply what you did. " +
