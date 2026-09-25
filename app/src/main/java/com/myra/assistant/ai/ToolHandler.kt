@@ -73,6 +73,9 @@ object ToolHandler {
                 "can_see_screen" ->
                     if (ScreenShareService.isSharing) "OK: you can see the user's screen"
                     else "ERROR: screen share is OFF"
+                "get_screen_elements" ->
+                    if (!isA11yOn()) A11Y_OFF
+                    else "OK:\n" + MyraAccessibilityService.getScreenElements()
                 "input_text" ->
                     if (!isA11yOn()) A11Y_OFF
                     else if (MyraAccessibilityService.inputText(args.optString("text"))) "OK: typed"
