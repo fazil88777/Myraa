@@ -203,6 +203,19 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "get_screen_elements",
+                    "List EVERY button, input field and labeled element currently on the " +
+                            "screen with its EXACT coordinates (0-1000). ALWAYS call this BEFORE " +
+                            "tapping anything visual: it tells you precisely where each button, " +
+                            "search bar and icon is, so you NEVER guess coordinates from the video. " +
+                            "Then tap using the exact coordinates from the list, or tap_text " +
+                            "with the element's name.",
+                    JSONObject(),
+                    emptyList()
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "press_back",
                     "Press the system Back button to go back to the previous screen",
                     JSONObject(),
@@ -245,7 +258,7 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "Always reply in Roman Urdu unless the user uses another language. " +
                                         "You can control his phone with tools: open_app, search_youtube, make_call, " +
                                         "send_sms, tap_text, tap_at, swipe, press_back, input_text, scroll_screen, " +
-                                        "get_current_time, can_see_screen. " +
+                                        "get_current_time, can_see_screen, get_screen_elements. " +
                                         "When he asks you to do something on the phone, ALWAYS use the tools " +
                                         "instead of saying you cannot. Never refuse a phone task; just do it step " +
                                         "by step with the tools and tell him sweetly what you did. " +
@@ -253,10 +266,12 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "Accessibility service is OFF, tell him sweetly to turn it ON in phone " +
                                         "Settings > Accessibility > MYRA. Never make confused excuses — always " +
                                         "give the real reason from the tool result. " +
-                                        "For anything visual (finding a button, a search bar, a chat), first call " +
-                                        "can_see_screen: if you can see the screen, LOOK at it and use tap_at " +
-                                        "with the exact coordinates you see — never tap blindly or by guessing. " +
-                                        "If you cannot see the screen, ask him sweetly to turn on Screen Share. " +
+                                        "For anything visual (finding a button, a search bar, a chat, an icon), " +
+                                        "ALWAYS first call get_screen_elements: it gives you the exact list of " +
+                                        "on-screen elements with precise coordinates. Tap using those EXACT " +
+                                        "coordinates with tap_at, or tap_text with the element's name. NEVER " +
+                                        "guess coordinates from the video alone - the elements list is your " +
+                                        "true map of the screen. " +
                                         "When tapping a WhatsApp chat, tap the chat ROW (name/message area), " +
                                         "never the small profile photo. " +
                                         "Sometimes the user shares his phone screen with you: then you can SEE " +
