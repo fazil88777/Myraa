@@ -12,7 +12,16 @@
           "package_name": "com.myra.assistant"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "163564711313-gbap80bunt5nmr7t9d7ntakb6q07qr1d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.myra.assistant",
+            "certificate_hash": "d3ee4e7ae054639dfe818aa1b7802ac57f3f1107"
+          }
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCxCJmon2bTFLUrS9lTzaCuBMtZadJIPfg"
