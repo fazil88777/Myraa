@@ -251,6 +251,16 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "open_website",
+                    "Open any website URL in the phone's browser (Chrome) so the user can SEE " +
+                            "it himself on screen. Use when the user says 'khol kar dikhao' or " +
+                            "'open this site'.",
+                    obj("url" to strProp("Full website URL, e.g. 'https://www.olx.com.pk'")),
+                    listOf("url")
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "get_weather",
                     "Get LIVE current weather for any city: temperature, condition, rain chance, " +
                             "humidity, wind. Use whenever the user asks about mausam, weather or barish.",
@@ -324,7 +334,8 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "movies, product hunting on OLX/Marketplace/Daraz and anything about " +
                                         "the outside world (search in English, read the best results aloud " +
                                         "with prices and links); read_webpage to open a link and read its " +
-                                        "full details; get_weather for live mausam of any city; " +
+                                        "full details; open_website to show any site in his phone browser; " +
+                                        "get_weather for live mausam of any city; " +
                                         "save_script to write scripts or long texts into a file in " +
                                         "Downloads/MYRA. " +
                                         "Do EXACTLY what the user says, step by step, the way he says it — " +

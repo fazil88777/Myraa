@@ -114,6 +114,7 @@ object ToolHandler {
                     }
                 "web_search" -> webSearch(args.optString("query"))
                 "read_webpage" -> readWebpage(args.optString("url"))
+                "open_website" -> openWebsite(args.optString("url"), context)
                 "get_weather" -> getWeather(args.optString("location"))
                 "save_script" -> saveScript(
                     args.optString("title"),
@@ -208,6 +209,22 @@ object ToolHandler {
             "OK: page text (pehla hissa):\n" + text.take(3500)
         } catch (e: Exception) {
             "ERROR: cannot read page: ${e.message}"
+        }
+    }
+
+    // ---------------- open_website ----------------
+
+    private fun openWebsite(url: String, context: Context): String {
+        if (url.isBlank()) return "ERROR: empty url"
+        return try {
+            var u = url.trim()
+            if (!u.startsWith("http")) u = "https://$u"
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(u))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            "OK: opened $u in the browser — tell the user it is open on his screen"
+        } catch (e: Exception) {
+            "ERROR: cannot open website: ${e.message}"
         }
     }
 
