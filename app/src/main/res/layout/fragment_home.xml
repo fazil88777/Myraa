@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/homeRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:gravity="center_horizontal"
     android:orientation="vertical"
     android:padding="16dp">
 
-    <!-- MYRA face = connect / disconnect button -->
+    <!-- MYRA aura orb = connect / disconnect button (rotates, design from Settings) -->
     <FrameLayout
         android:layout_width="210dp"
         android:layout_height="210dp">
@@ -25,8 +26,9 @@
             android:clickable="true"
             android:focusable="true"
             android:scaleType="centerCrop"
-            android:src="@drawable/myra_face"
+            android:src="@drawable/orb_crimson"
             app:shapeAppearanceOverlay="@style/CircleImage" />
+
     </FrameLayout>
 
     <TextView
@@ -55,7 +57,7 @@
         android:paddingRight="14dp"
         android:paddingBottom="6dp"
         android:text="✦ VERSION 2.0 ✦"
-        android:textColor="#B388FF"
+        android:textColor="#FF5252"
         android:textSize="11sp" />
 
     <TextView
@@ -135,6 +137,7 @@
             android:background="@drawable/bg_pill"
             android:text="Send"
             android:textColor="#FFFFFF" />
+
     </LinearLayout>
 
 </LinearLayout>
