@@ -1,34 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Glowing concentric rings behind MYRA's face button -->
+<!-- Glowing red concentric rings behind MYRA's aura orb -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
     <item>
         <shape android:shape="oval">
             <gradient
                 android:type="radial"
                 android:gradientRadius="105dp"
-                android:startColor="#40007BFF"
-                android:endColor="#00007BFF" />
+                android:startColor="#40FF3B30"
+                android:endColor="#00FF3B30" />
         </shape>
     </item>
+
     <item
         android:left="20dp"
         android:top="20dp"
         android:right="20dp"
         android:bottom="20dp">
         <shape android:shape="oval">
-            <solid android:color="#12003B6B" />
+            <solid android:color="#12160B0B" />
             <stroke
                 android:width="3dp"
-                android:color="#4FC3F7" />
+                android:color="#FF5252" />
         </shape>
     </item>
+
     <item
         android:left="38dp"
         android:top="38dp"
         android:right="38dp"
         android:bottom="38dp">
         <shape android:shape="oval">
-            <solid android:color="#0A0A28" />
+            <solid android:color="#0A0A0A" />
         </shape>
     </item>
+
 </layer-list>
