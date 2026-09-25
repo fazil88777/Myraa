@@ -45,4 +45,18 @@ object Prefs {
         set(value) {
             if (::sp.isInitialized) sp.edit().putString("last_crash", value).apply()
         }
+
+    /** Aura orb design: "crimson", "azure" or "violet". */
+    var orbDesign: String
+        get() = if (::sp.isInitialized) sp.getString("orb_design", "crimson") ?: "crimson" else "crimson"
+        set(value) {
+            if (::sp.isInitialized) sp.edit().putString("orb_design", value).apply()
+        }
+
+    /** Home wallpaper: "midnight", "crimson" or "azure". */
+    var wallpaper: String
+        get() = if (::sp.isInitialized) sp.getString("wallpaper", "midnight") ?: "midnight" else "midnight"
+        set(value) {
+            if (::sp.isInitialized) sp.edit().putString("wallpaper", value).apply()
+        }
 }
