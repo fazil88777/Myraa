@@ -113,8 +113,12 @@ class ScreenShareService : Service() {
 
         imageReader?.setOnImageAvailableListener({ reader ->
             val now = SystemClock.uptimeMillis()
-            if (now - lastSentAt < 800) {
-                // Throttle to ~1.25 frames/sec: drop extra frames, don't queue them
+            // Throttle to 1 frame every 2 seconds: heavy HD frames every 800ms
+            // were choking the WebSocket (socket died after a few minutes of
+            // screen share -> MYRA went silent). 0.5 fps is plenty for seeing
+            // the screen and keeps the connection alive.
+            if (now - lastSentAt < 2000) {
+                // Drop extra frames, don't queue them
                 try {
                     reader.acquireLatestImage()?.close()
                 } catch (_: Exception) {
@@ -135,13 +139,15 @@ class ScreenShareService : Service() {
                 )
                 bmp.copyPixelsFromBuffer(buffer)
                 bmp = Bitmap.createBitmap(bmp, 0, 0, width, height)
-                // HD frames: 1024px wide, quality 75 — MYRA ko saaf nazar aaye
-                val sw = 1024
-                val sh = (height * (1024f / width)).toInt()
+                // Lighter frames: 768px wide, quality 60 — still clear enough for
+                // MYRA to read the screen, but ~3x smaller than 1024px/q75 so the
+                // WebSocket never chokes during screen share.
+                val sw = 768
+                val sh = (height * (768f / width)).toInt()
                 val scaled = Bitmap.createScaledBitmap(bmp, sw, sh, true)
                 bmp.recycle()
                 val out = ByteArrayOutputStream()
-                scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                scaled.compress(Bitmap.CompressFormat.JPEG, 60, out)
                 scaled.recycle()
                 val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
                 try {
