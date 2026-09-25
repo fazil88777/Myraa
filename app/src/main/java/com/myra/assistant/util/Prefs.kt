@@ -59,4 +59,11 @@ object Prefs {
         set(value) {
             if (::sp.isInitialized) sp.edit().putString("wallpaper", value).apply()
         }
+
+    /** User's name (asked by MYRA, editable in Settings). */
+    var userName: String
+        get() = if (::sp.isInitialized) sp.getString("user_name", "") ?: "" else ""
+        set(value) {
+            if (::sp.isInitialized) sp.edit().putString("user_name", value).apply()
+        }
 }
