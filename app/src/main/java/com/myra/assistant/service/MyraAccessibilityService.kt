@@ -217,6 +217,55 @@ class MyraAccessibilityService : AccessibilityService() {
                 collectAll(node.getChild(i), out)
             }
         }
+
+        /**
+         * Dump every actionable element on screen with its EXACT coordinates.
+         * This is how MYRA "knows" precisely where each button, search bar and
+         * icon is — no more guessing coordinates from the video.
+         * Format per line: [i] "label" kind @(x,y)   (x,y are 0-1000)
+         */
+        fun getScreenElements(): String {
+            val svc = instance ?: return "ERROR: accessibility off"
+            val root = svc.rootInActiveWindow ?: return "ERROR: no screen"
+            return try {
+                val metrics = svc.resources.displayMetrics
+                val w = metrics.widthPixels.toFloat()
+                val h = metrics.heightPixels.toFloat()
+                val out = StringBuilder()
+                var count = 0
+                fun walk(n: AccessibilityNodeInfo?) {
+                    if (n == null || count >= 60) return
+                    val label = n.text?.toString()?.trim().orEmpty()
+                        .ifEmpty { n.contentDescription?.toString()?.trim().orEmpty() }
+                    val actionable =
+                        n.isClickable || n.isLongClickable || n.isEditable || n.isScrollable
+                    if (actionable && label.isNotEmpty()) {
+                        val r = android.graphics.Rect()
+                        n.getBoundsInScreen(r)
+                        val cx = ((r.centerX() / w) * 1000).toInt().coerceIn(0, 1000)
+                        val cy = ((r.centerY() / h) * 1000).toInt().coerceIn(0, 1000)
+                        val kind = when {
+                            n.isEditable -> "input"
+                            n.isScrollable -> "scroll"
+                            else -> "btn"
+                        }
+                        out.append("[").append(count).append("] \"")
+                            .append(label.take(40)).append("\" ")
+                            .append(kind)
+                            .append(" @(").append(cx).append(",").append(cy).append(")\n")
+                        count++
+                    }
+                    for (i in 0 until n.childCount) {
+                        if (count >= 60) break
+                        walk(n.getChild(i))
+                    }
+                }
+                walk(root)
+                if (count == 0) "EMPTY: no labeled elements on screen" else out.toString()
+            } catch (e: Exception) {
+                "ERROR: ${e.message}"
+            }
+        }
     }
 
     override fun onServiceConnected() {
