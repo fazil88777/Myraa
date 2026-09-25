@@ -113,8 +113,8 @@ class ScreenShareService : Service() {
 
         imageReader?.setOnImageAvailableListener({ reader ->
             val now = SystemClock.uptimeMillis()
-            if (now - lastSentAt < 1000) {
-                // Throttle to ~1 frame/sec: drop extra frames, don't queue them
+            if (now - lastSentAt < 800) {
+                // Throttle to ~1.25 frames/sec: drop extra frames, don't queue them
                 try {
                     reader.acquireLatestImage()?.close()
                 } catch (_: Exception) {
@@ -135,13 +135,13 @@ class ScreenShareService : Service() {
                 )
                 bmp.copyPixelsFromBuffer(buffer)
                 bmp = Bitmap.createBitmap(bmp, 0, 0, width, height)
-                // Scale down to 768px wide to keep frames small
-                val sw = 768
-                val sh = (height * (768f / width)).toInt()
+                // HD frames: 1024px wide, quality 75 — MYRA ko saaf nazar aaye
+                val sw = 1024
+                val sh = (height * (1024f / width)).toInt()
                 val scaled = Bitmap.createScaledBitmap(bmp, sw, sh, true)
                 bmp.recycle()
                 val out = ByteArrayOutputStream()
-                scaled.compress(Bitmap.CompressFormat.JPEG, 60, out)
+                scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
                 scaled.recycle()
                 val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
                 try {
