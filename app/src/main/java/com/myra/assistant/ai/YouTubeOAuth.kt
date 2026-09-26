@@ -107,7 +107,9 @@ object YouTubeOAuth {
         val deadline = System.currentTimeMillis() + 75_000L
         val wait = (intervalSec * 1000L).coerceAtLeast(5000L)
         while (System.currentTimeMillis() < deadline) {
-            when (val (status) = tryPoll(context, deviceCode)) {
+            val poll = tryPoll(context, deviceCode)
+            val status = poll.first
+            when (status) {
                 "OK" -> return "OK: YouTube login ho gaya! Ab 'full analyze batao' bolo."
                 "DENIED" -> return "ERROR: tumne access deny kar diya. Dobara login karna ho to 'youtube login karo' bolo."
                 "EXPIRED" -> return "ERROR: code expire ho gaya. 'youtube login karo' se naya code lo."
