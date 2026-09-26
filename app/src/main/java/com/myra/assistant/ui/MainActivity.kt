@@ -5,7 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
@@ -16,7 +19,9 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.myra.assistant.R
+import com.myra.assistant.service.HotwordService
 import com.myra.assistant.service.ScreenShareService
+import com.myra.assistant.util.HotwordStore
 import com.myra.assistant.util.PermissionHelper
 import com.myra.assistant.util.Prefs
 import java.util.Calendar
@@ -91,6 +96,40 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        // ---- "hi MYRA" hotword wiring ----
+        // Keep the background listener quiet while the voice session is live.
+        viewModel.isConnected.observe(this) { connected ->
+            HotwordService.sessionActive = connected == true
+        }
+        // The Siri-style circle needs "Display over other apps" — ask once, only if hotword is on.
+        if (HotwordStore.isEnabled(this) &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            !Settings.canDrawOverlays(this)
+        ) {
+            try {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                )
+                toast("Hotword circle ke liye 'Display over other apps' ON kar dena")
+            } catch (_: Exception) {
+            }
+        }
+        // Resume background hotword listening (after reboot / app update).
+        if (HotwordStore.isEnabled(this)) {
+            try {
+                ContextCompat.startForegroundService(
+                    this,
+                    Intent(this, HotwordService::class.java)
+                        .setAction(HotwordService.ACTION_START)
+                )
+            } catch (_: Exception) {
+            }
+        }
+        handleAutoConnect(intent)
+
         // If the app crashed last time, show the reason
         val lastCrash = Prefs.lastCrash
         if (lastCrash.isNotEmpty()) {
@@ -101,6 +140,26 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton("OK", null)
                 .show()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAutoConnect(intent)
+    }
+
+    /**
+     * "hi MYRA" hotword trigger: open MYRA and start the full voice session
+     * by ourselves — same as opening the app and pressing Connect.
+     */
+    private fun handleAutoConnect(intent: Intent?) {
+        if (intent?.getBooleanExtra("auto_connect", false) != true) return
+        intent.removeExtra("auto_connect")
+        if (Prefs.apiKey.isBlank()) {
+            toast("API key nahi hai — pehle Settings mein API key dalo")
+            return
+        }
+        viewModel.startSession(Prefs.apiKey) // idempotent: already connected ho to kuch nahi hota
     }
 
     private fun greeting(): String {
