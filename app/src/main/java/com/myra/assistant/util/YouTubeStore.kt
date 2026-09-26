@@ -33,4 +33,34 @@ object YouTubeStore {
     fun setChannelId(context: Context, v: String) {
         sp(context).edit().putString("yt_channel_id", v.trim()).apply()
     }
+
+    // ---- OAuth (Phase 2: private analytics, read-only) ----
+
+    fun getOAuthClientId(context: Context): String =
+        sp(context).getString("yt_oauth_client_id", "") ?: ""
+
+    fun setOAuthClientId(context: Context, v: String) {
+        sp(context).edit().putString("yt_oauth_client_id", v.trim()).apply()
+    }
+
+    fun getAccessToken(context: Context): String =
+        sp(context).getString("yt_access_token", "") ?: ""
+
+    fun setAccessToken(context: Context, v: String) {
+        sp(context).edit().putString("yt_access_token", v).apply()
+    }
+
+    fun getRefreshToken(context: Context): String =
+        sp(context).getString("yt_refresh_token", "") ?: ""
+
+    fun setRefreshToken(context: Context, v: String) {
+        sp(context).edit().putString("yt_refresh_token", v).apply()
+    }
+
+    fun getTokenExpiry(context: Context): Long =
+        sp(context).getLong("yt_token_expiry", 0)
+
+    fun setTokenExpiry(context: Context, v: Long) {
+        sp(context).edit().putLong("yt_token_expiry", v).apply()
+    }
 }
