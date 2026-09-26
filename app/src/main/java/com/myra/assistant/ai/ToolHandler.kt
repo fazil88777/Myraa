@@ -16,6 +16,7 @@ import com.myra.assistant.service.ScheduledMessageReceiver
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.HotwordStore
 import com.myra.assistant.util.ScheduledStore
+import com.myra.assistant.util.YouTubeStore
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -89,6 +90,24 @@ object ToolHandler {
                         "ERROR: hotword service start nahi hui"
                     }
                 }
+                "save_youtube_setup" -> {
+                    val key = args.optString("api_key").trim()
+                    val handle = args.optString("handle").trim()
+                    if (key.isNotBlank()) YouTubeStore.setApiKey(context, key)
+                    if (handle.isNotBlank()) YouTubeStore.setHandle(context, handle)
+                    val savedKey = YouTubeStore.getApiKey(context).isNotBlank()
+                    val savedHandle = YouTubeStore.getHandle(context).ifBlank { null }
+                    if (savedKey && savedHandle != null) {
+                        val id = YouTubeAnalytics.resolveChannelId(context, YouTubeStore.getApiKey(context), savedHandle)
+                        if (id != null) "OK: YouTube setup save ho gaya — channel mil gaya. Ab 'mere channel ka analyze batao' bolo."
+                        else "OK: key save ho gayi, lekin channel handle nahi mila — handle dobara check karo (jaise @FazilDrama)."
+                    } else if (savedKey) {
+                        "OK: YouTube API key save ho gayi. Ab apne channel ka handle batao, jaise 'mera channel @FazilDrama hai'."
+                    } else {
+                        "OK: channel handle save ho gaya. Ab apni YouTube API key batao: 'meri youtube key' aur phir key bolo."
+                    }
+                }
+                "youtube_analyze" -> YouTubeAnalytics.analyze(context)
                 "schedule_message" -> scheduleMessage(
                     args.optString("contact"),
                     args.optString("message"),

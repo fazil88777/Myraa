@@ -159,6 +159,29 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "save_youtube_setup",
+                    "Save the user's YouTube Data API key and/or channel handle for " +
+                            "channel analytics. Call when the user dictates his key or handle.",
+                    obj(
+                        "api_key" to strProp("YouTube Data API v3 key the user dictated (only if he gave it)"),
+                        "handle" to strProp("Channel handle like @FazilDrama (only if he gave it)")
+                    ),
+                    emptyList()
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "youtube_analyze",
+                    "Analyze the user's YouTube channel: subscriber count, latest video " +
+                            "views/likes/comments, and how the latest video performs versus " +
+                            "previous ones. Call when he asks 'mere channel ka analyze batao' " +
+                            "or 'meri latest video kaisi chal rahi hai'.",
+                    JSONObject(),
+                    emptyList()
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "schedule_message",
                     "Schedule a WhatsApp message to be sent AUTOMATICALLY at a later time, " +
                             "even if the user is asleep or the voice session is over. The phone " +
@@ -398,6 +421,16 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "karo', call it with enabled=false. " +
                                         "GREETING: every time a voice session starts, your very first line " +
                                         "is always 'Ji boss, kya kaam hai?' — then listen. " +
+                                        "YOUTUBE: agar user kahe 'meri youtube key XXX hai' to " +
+                                        "save_youtube_setup me api_key bhejo; agar kahe 'mera channel " +
+                                        "@YYY hai' to handle bhejo; jo info de wahi bhejo, baqi khali " +
+                                        "chhoro. Jab kahe 'mere channel ka analyze batao' ya 'meri latest " +
+                                        "video kaisi chal rahi hai' to youtube_analyze call karo, phir " +
+                                        "result Roman Urdu me sunao: subs, latest video ke views/likes, " +
+                                        "pichli videos se farq, aur title pe mashwara (hook hai? zyada " +
+                                        "lamba to nahi? curiosity paida karta hai?). Thumbnail ki tasveer " +
+                                        "tum nahi dekh sakti — thumbnail pe mashwara sirf tab do jab user " +
+                                        "khud thumbnail dikhaye. " +
                                         "You also have world-knowledge tools: web_search for news, trending " +
                                         "movies, product hunting on OLX/Marketplace/Daraz and anything about " +
                                         "the outside world (search in English, read the best results aloud " +
