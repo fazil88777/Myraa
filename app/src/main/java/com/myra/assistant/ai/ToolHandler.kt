@@ -127,7 +127,8 @@ object ToolHandler {
                                     "bol ke DESKTOP wali client ID save karwao (MYRA-TV wali nahi chalegi)."
                         } else {
                             "LOGIN_URL: $url. User se kaho: Maine Chrome mein Google ka login page khol diya hai — " +
-                                    "wahan apne CHANNEL wale Gmail se login karke Allow dabao, phir wapas aa ke kaho 'code daal diya'. " +
+                                    "wahan apne CHANNEL wale Gmail se login karke Allow dabao. Allow dabate hi " +
+                                    "login khud-ba-khud ho jayega, koi code nahi bolna. Phir seedha 'full analyze batao' kaho. " +
                                     "Koi code ya link mat sunao."
                         }
                     }

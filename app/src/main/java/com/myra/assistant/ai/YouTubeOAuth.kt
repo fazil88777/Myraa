@@ -36,6 +36,7 @@ object YouTubeOAuth {
     @Volatile private var authCode: String? = null
     @Volatile private var verifier: String? = null
     @Volatile private var port: Int = 0
+    @Volatile private var appCtx: Context? = null
 
     fun isLinked(context: Context): Boolean =
         YouTubeStore.getRefreshToken(context).isNotBlank() ||
@@ -51,6 +52,7 @@ object YouTubeOAuth {
         stopServer()
         authCode = null
         verifier = null
+        appCtx = context.applicationContext
         return try {
             val v = genVerifier()
             verifier = v
@@ -84,6 +86,10 @@ object YouTubeOAuth {
      * Exchanges the captured code for tokens and saves them.
      */
     fun confirmLogin(context: Context): String {
+        // Already done (e.g. auto-exchange after Allow) — idempotent.
+        if (isLinked(context)) {
+            return "OK: YouTube login ho gaya! Ab 'full analyze batao' bolo."
+        }
         val code = authCode
         if (code.isNullOrBlank()) {
             return if (server != null)
@@ -197,7 +203,7 @@ object YouTubeOAuth {
                     val err = Regex("[?&]error=([^& ]+)").find(requestLine)?.groupValues?.get(1)
                     val ok = !code.isNullOrBlank()
                     if (ok) authCode = URLDecoder.decode(code, "UTF-8")
-                    val msg = if (ok) "Ho gaya! ✅<br>Wapas MYRA app mein jao aur kaho:<br><b>code daal diya</b>"
+                    val msg = if (ok) "Ho gaya! ✅<br>Login ho gaya — wapas MYRA app mein jao aur kaho:<br><b>full analyze batao</b>"
                     else "Error: ${err ?: "pata nahi"} — MYRA app mein dobara try karo"
                     val html = "<html><body style='font-family:sans-serif;text-align:center;" +
                             "padding-top:60px'><h2>$msg</h2></body></html>"
@@ -226,7 +232,34 @@ object YouTubeOAuth {
             } catch (_: Exception) {
             }
             server = null
+            // Code captured (user tapped Allow) — exchange it for tokens
+            // automatically, no "confirm" utterance needed.
+            if (authCode != null) autoExchange()
         }
+    }
+
+    /**
+     * Runs right after Allow: swaps the captured code for tokens on a
+     * background thread and tells the user via Toast. Makes the login
+     * fully automatic — Gemini never needs a confirm phrase.
+     */
+    private fun autoExchange() {
+        val ctx = appCtx ?: return
+        Thread {
+            val result = try {
+                confirmLogin(ctx)
+            } catch (_: Exception) {
+                "ERROR"
+            }
+            try {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    val msg = if (result.startsWith("OK")) "YouTube login ho gaya boss! ✅"
+                    else "YouTube login mein masla hua — dobara try karo"
+                    android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (_: Exception) {
+            }
+        }.apply { isDaemon = true; start() }
     }
 
     private fun stopServer() {

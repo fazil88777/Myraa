@@ -480,15 +480,17 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "MYRA-TV wali nahi). Jab kahe 'youtube login karo' to " +
                                         "youtube_login call karo — ye Chrome me Google ka login page khol " +
                                         "dega. User se kaho: Chrome me khule page pe apna WOHI Gmail " +
-                                        "chuno jis pe tumhara YouTube channel hai, Allow dabao, phir " +
-                                        "wapas aa ke kaho 'allow kar diya'. Koi code ya link mat sunao. " +
+                                        "chuno jis pe tumhara YouTube channel hai, Allow dabao. Allow " +
+                                        "dabate hi login khud-ba-khud ho jayega — user ko kuch nahi " +
+                                        "kehna, koi code nahi bolna. Koi code ya link mat sunao. " +
                                         "BOHAT ZAROORI: is login me KOI code nahi hota — user se KABHI " +
                                         "device code ya kisi qisam ka code mat mango, code ka zikr tak " +
-                                        "mat karo. Jab user kahe 'allow kar diya' (ya 'code daal diya' " +
-                                        "ya 'ho gaya') to foran youtube_login_confirm call karo, baghair " +
-                                        "koi sawal kiye. " +
-                                        "Agar result PENDING aaye to user se kaho pehle Chrome me Allow " +
-                                        "dabaye phir dobara 'allow kar diya' kahe. Jab kahe 'full analyze " +
+                                        "mat karo. Allow ke baad user jab kahe 'full analyze batao' to " +
+                                        "youtube_analyze_full call karo. " +
+                                        "(youtube_login_confirm ab sirf backup hai — agar user kahe " +
+                                        "'allow kar diya' to use call kar sakte ho, wo nuksan nahi dega.) " +
+                                        "Agar result PENDING aaye to user se kaho login dobara kare: " +
+                                        "'youtube login karo'. Jab kahe 'full analyze " +
                                         "batao' / 'CTR batao' / 'retention batao' / 'views kahan se aaye' to " +
                                         "youtube_analyze_full call karo aur result Roman Urdu me sunao. " +
                                         "Agar login nahi hua to pehle login karwao. " +
