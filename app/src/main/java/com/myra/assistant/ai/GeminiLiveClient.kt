@@ -40,9 +40,10 @@ class GeminiLiveClient(private val listener: Listener) {
     private val client: OkHttpClient =
         OkHttpClient.Builder()
             .readTimeout(0, TimeUnit.MILLISECONDS)
-            // WebSocket ping keeps idle mobile connections alive (NAT timeouts
-            // silently kill the socket after ~1-2 min of quiet otherwise).
-            .pingInterval(25, TimeUnit.SECONDS)
+            // NOTE: no pingInterval on purpose. The Live server sometimes misses
+            // pong replies on mobile networks, and OkHttp treats ONE missed pong
+            // as fatal ("sent ping but didn't receive pong") — killing a healthy
+            // session. The MainViewModel watchdog handles dead sockets instead.
             .build()
 
     private var socket: WebSocket? = null
@@ -347,6 +348,9 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "Accessibility service is OFF, tell him plainly to turn it ON in phone " +
                                         "Settings > Accessibility > MYRA. Never make confused excuses — always " +
                                         "give the real reason from the tool result. " +
+                                        "If a tool result starts with 'ASK:', it means you must ask the user a " +
+                                        "short question first and wait for his answer before acting — never " +
+                                        "guess in that case. " +
                                         "For anything visual (finding a button, a search bar, a chat, an icon), " +
                                         "ALWAYS first call get_screen_elements: it gives you the exact list of " +
                                         "on-screen elements with precise coordinates. Tap using those EXACT " +
@@ -371,6 +375,10 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "Prefer tap_text over tap_at whenever the target has a name or label - " +
                                         "coordinates are only a last resort when you can clearly see the element " +
                                         "on screen. " +
+                                        "PRONUNCIATION: Roman Urdu/Hindi words ko Urdu/Hindi ki tarah natural " +
+                                        "tariqe se bolo — kabhi unhein spell-out mat karo. For example 'aaj' ko " +
+                                        "'aaj' bolo ('A.J.' mat bolo), 'kya' ko 'kya' bolo ('K.Y.A.' mat bolo), " +
+                                        "'kaise' ko 'kaise' bolo. English words normal English mein bolo. " +
                                         "Be concise and conversational."
                             )
                         )

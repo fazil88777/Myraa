@@ -343,19 +343,33 @@ object ToolHandler {
             "instagram" to "com.instagram.android",
             "facebook" to "com.facebook.katana"
         )
-        val key = appName.lowercase(Locale.US)
-        var pkg: String? = map[key]
-        if (pkg == null) {
-            val pm = context.packageManager
-            for (app in pm.getInstalledApplications(0)) {
-                val label = pm.getApplicationLabel(app).toString()
-                if (label.lowercase(Locale.US).contains(key)) {
-                    pkg = app.packageName
-                    break
-                }
-            }
+        val key = appName.lowercase(Locale.US).trim()
+        if (key.isEmpty()) return "ERROR: empty app name"
+        // 1. Known apps: exact map hit
+        map[key]?.let { return launchPkg(it, appName, context) }
+        val pm = context.packageManager
+        val apps = pm.getInstalledApplications(0)
+        // 2. Exact label match (e.g. user said "Camera", app is "Camera")
+        val exact = apps.filter {
+            pm.getApplicationLabel(it).toString().equals(key, ignoreCase = true)
         }
-        if (pkg == null) return "ERROR: app not found: $appName"
+        if (exact.size == 1) return launchPkg(exact[0].packageName, appName, context)
+        // 3. Partial matches: open only when there is exactly ONE candidate,
+        // otherwise ask the user instead of opening the wrong app.
+        val partial = apps.filter {
+            pm.getApplicationLabel(it).toString().lowercase(Locale.US).contains(key)
+        }
+        if (partial.size == 1) return launchPkg(partial[0].packageName, appName, context)
+        if (partial.size > 1) {
+            val names = partial.take(5).joinToString(", ") {
+                pm.getApplicationLabel(it).toString()
+            }
+            return "ASK: '$appName' se milti-julti ye apps hain: $names — user se poocho kaunsi kholni hai, phir uska poora naam lekar dobara open_app call karo"
+        }
+        return "ERROR: app not found: $appName"
+    }
+
+    private fun launchPkg(pkg: String, appName: String, context: Context): String {
         val intent = context.packageManager.getLaunchIntentForPackage(pkg)
             ?: return "ERROR: cannot launch $appName"
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
