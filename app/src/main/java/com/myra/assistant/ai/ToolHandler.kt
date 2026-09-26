@@ -108,6 +108,42 @@ object ToolHandler {
                     }
                 }
                 "youtube_analyze" -> YouTubeAnalytics.analyze(context)
+                "save_youtube_client_id" -> {
+                    val id = args.optString("client_id").trim()
+                    if (id.isBlank()) {
+                        "ERROR: client ID khali hai."
+                    } else {
+                        YouTubeStore.setOAuthClientId(context, id)
+                        "OK: YouTube login client ID save ho gaya. Ab 'youtube login karo' bolo."
+                    }
+                }
+                "youtube_login" -> {
+                    if (YouTubeOAuth.isLinked(context)) {
+                        "OK: YouTube login pehle se hua hua hai. Seedha 'full analyze batao' bolo."
+                    } else {
+                        val flow = YouTubeOAuth.startDeviceFlow(context)
+                        if (flow == null) {
+                            "ERROR: login shuru nahi hua — pehle 'mera youtube client id ... hai' " +
+                                    "bol ke client ID save karwao."
+                        } else {
+                            "LOGIN_CODE: user_code=${flow.userCode} | url=${flow.verificationUrl} | " +
+                                    "device_code=${flow.deviceCode} | interval=${flow.intervalSec}. " +
+                                    "User ko code sunao: Chrome mein google.com/device kholo, ye code dalo, " +
+                                    "Allow dabao, phir kaho 'code daal diya'. device_code aur interval " +
+                                    "mat sunao — sirf apne paas rakho."
+                        }
+                    }
+                }
+                "youtube_login_confirm" -> {
+                    val deviceCode = args.optString("device_code")
+                    val interval = args.optInt("interval", 5)
+                    if (deviceCode.isBlank()) {
+                        "ERROR: device code nahi mila — 'youtube login karo' se dobara shuru karo."
+                    } else {
+                        YouTubeOAuth.awaitApproval(context, deviceCode, interval)
+                    }
+                }
+                "youtube_analyze_full" -> YouTubeAnalytics.analyzeAdvanced(context)
                 "schedule_message" -> scheduleMessage(
                     args.optString("contact"),
                     args.optString("message"),

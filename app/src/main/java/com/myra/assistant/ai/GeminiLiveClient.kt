@@ -182,6 +182,50 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "save_youtube_client_id",
+                    "Save the YouTube OAuth client ID the user dictated (for YouTube login).",
+                    obj(
+                        "client_id" to strProp("OAuth client ID ending with .apps.googleusercontent.com")
+                    ),
+                    listOf("client_id")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "youtube_login",
+                    "Start YouTube login via device code. Returns a user_code the user must " +
+                            "enter at google.com/device in Chrome. Speak ONLY the user_code to " +
+                            "the user, never the device_code.",
+                    JSONObject(),
+                    emptyList()
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "youtube_login_confirm",
+                    "Check whether the user approved the YouTube login. Call ONLY when the " +
+                            "user says 'code daal diya'. Pass device_code and interval exactly " +
+                            "as they came in the youtube_login result.",
+                    obj(
+                        "device_code" to strProp("device_code from the youtube_login result"),
+                        "interval" to strProp("interval from the youtube_login result")
+                    ),
+                    listOf("device_code")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "youtube_analyze_full",
+                    "Deep YouTube analytics for the latest video: retention, watch time, " +
+                            "traffic sources, subscribers gained/lost, CTR. Needs YouTube login " +
+                            "first. Call when he asks 'full analyze batao', 'CTR batao', " +
+                            "'retention batao', or 'views kahan se aaye'.",
+                    JSONObject(),
+                    emptyList()
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "schedule_message",
                     "Schedule a WhatsApp message to be sent AUTOMATICALLY at a later time, " +
                             "even if the user is asleep or the voice session is over. The phone " +
@@ -431,6 +475,19 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "lamba to nahi? curiosity paida karta hai?). Thumbnail ki tasveer " +
                                         "tum nahi dekh sakti — thumbnail pe mashwara sirf tab do jab user " +
                                         "khud thumbnail dikhaye. " +
+                                        "YOUTUBE-LOGIN: agar user kahe 'mera youtube client id XXX hai' to " +
+                                        "save_youtube_client_id me bhejo. Jab kahe 'youtube login karo' to " +
+                                        "youtube_login call karo, phir user ko user_code SUNAO (lafz ba lafz, " +
+                                        "jaise 'A B C D - 1 2 3 4') aur kaho: Chrome me google.com/device " +
+                                        "kholo, ye code dalo, apna wohi Gmail account chuno jis pe channel " +
+                                        "hai, Allow dabao, phir mujhe kaho 'code daal diya'. device_code " +
+                                        "kabhi mat sunao. Jab user kahe 'code daal diya' to youtube_login_confirm " +
+                                        "call karo — device_code aur interval youtube_login ke result se lo. " +
+                                        "Agar result PENDING aaye to user se kaho pehle Allow dabaye phir " +
+                                        "dobara 'code daal diya' kahe. Jab kahe 'full analyze batao' / 'CTR " +
+                                        "batao' / 'retention batao' / 'views kahan se aaye' to youtube_analyze_full " +
+                                        "call karo aur result Roman Urdu me sunao. Agar login nahi hua to pehle " +
+                                        "login karwao. " +
                                         "You also have world-knowledge tools: web_search for news, trending " +
                                         "movies, product hunting on OLX/Marketplace/Daraz and anything about " +
                                         "the outside world (search in English, read the best results aloud " +
