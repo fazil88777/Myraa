@@ -120,6 +120,55 @@ class MyraAccessibilityService : AccessibilityService() {
         }
 
         /**
+         * Tap the text node directly by its coordinates, slightly right of center
+         * (away from the left-side profile photo in chat rows).
+         */
+        fun tapTextCoords(text: String): Boolean {
+            if (text.isBlank()) return false
+            val root = instance?.rootInActiveWindow ?: return false
+            return try {
+                val hit = findTextContains(root, text.lowercase(Locale.US)) ?: return false
+                val svc = instance ?: return false
+                val dm = svc.resources.displayMetrics
+                val r = Rect()
+                hit.getBoundsInScreen(r)
+                val x = ((r.centerX() + r.width() * 0.25f) * 1000f / dm.widthPixels)
+                    .toInt().coerceIn(0, 1000)
+                val y = (r.centerY() * 1000f / dm.heightPixels).toInt().coerceIn(0, 1000)
+                tapAt(x, y)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /** True when WhatsApp's contact card popup is showing (not the chat). */
+        private fun isContactCard(): Boolean {
+            val root = instance?.rootInActiveWindow ?: return false
+            return try {
+                findDescContains(root, "video call") != null && findEditable(root) == null
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /** Tap the chat's message input field directly (never the header photo). */
+        fun focusEditableField(): Boolean {
+            val svc = instance ?: return false
+            val root = svc.rootInActiveWindow ?: return false
+            return try {
+                val target = findEditable(root) ?: return false
+                val dm = svc.resources.displayMetrics
+                val r = Rect()
+                target.getBoundsInScreen(r)
+                val x = (r.centerX() * 1000f / dm.widthPixels).toInt().coerceIn(0, 1000)
+                val y = (r.centerY() * 1000f / dm.heightPixels).toInt().coerceIn(0, 1000)
+                tapAt(x, y)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /**
          * Full WhatsApp send flow: open WhatsApp, find [contact]'s chat, type
          * [message] and press the Send (paper-plane) button. Must be called
          * off the main thread. Returns "OK: ..." or "ERROR: ...".
@@ -142,11 +191,20 @@ class MyraAccessibilityService : AccessibilityService() {
                 Thread.sleep(800)
                 if (!inputText(contact)) return "ERROR: search mein naam type nahi hua"
                 Thread.sleep(1800)
-                if (!clickOnTextContains(contact)) return "ERROR: '$contact' ka chat nahi mila"
+                // Tap the chat ROW by the name's coordinates (never the photo).
+                if (!tapTextCoords(contact)) return "ERROR: '$contact' ka chat nahi mila"
                 Thread.sleep(1500)
-                // Focus the message field, then type.
-                tapOnDescContains("message")
-                Thread.sleep(600)
+                // If the tap opened the contact card instead of the chat,
+                // use the card's message icon to open the chat.
+                if (isContactCard()) {
+                    if (!tapOnDescContains("message") && !tapOnDescContains("chat")) {
+                        return "ERROR: contact card se chat nahi khula"
+                    }
+                    Thread.sleep(1500)
+                }
+                // Focus the chat input field directly, then type.
+                if (!focusEditableField()) return "ERROR: chat ka message box nahi mila"
+                Thread.sleep(500)
                 if (!inputText(message)) return "ERROR: message type nahi hua"
                 Thread.sleep(1000)
                 // Press the Send (paper-plane) button.
