@@ -139,6 +139,16 @@ class GeminiLiveClient(private val listener: Listener) {
             fdArray.put(functionDecl("reject_call", "Reject/end the call", JSONObject(), emptyList()))
             fdArray.put(
                 functionDecl(
+                    "set_camera_access",
+                    "Turn the front-camera vision on or off. When ON, you can see " +
+                            "the user through the phone's front camera while the voice " +
+                            "session is live.",
+                    obj("enabled" to boolProp("true to turn camera vision ON, false to turn it OFF")),
+                    listOf("enabled")
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "tap_text",
                     "Tap on-screen text OR an icon button by its name. Matches visible text " +
                             "first, then icon buttons by their description - e.g. 'Send' taps the " +
@@ -357,6 +367,14 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "If a tool result starts with 'ASK:', it means you must ask the user a " +
                                         "short question first and wait for his answer before acting — never " +
                                         "guess in that case. " +
+                                        "CAMERA VISION: you have a front-camera you can use, but it is OFF " +
+                                        "by default. If the user says 'camera on karo' (or asks you to look " +
+                                        "at him / see what he is holding), call set_camera_access with " +
+                                        "enabled=true, then confirm 'Yes boss, camera on hai — main aapko " +
+                                        "dekh rahi hoon.' If he says 'camera band karo', call it with " +
+                                        "enabled=false. When camera frames arrive, you can see him — " +
+                                        "describe what you see only when he asks. Never claim to see him " +
+                                        "when the camera is off. " +
                                         "For anything visual (finding a button, a search bar, a chat, an icon), " +
                                         "ALWAYS first call get_screen_elements: it gives you the exact list of " +
                                         "on-screen elements with precise coordinates. Tap using those EXACT " +
@@ -556,6 +574,11 @@ class GeminiLiveClient(private val listener: Listener) {
     private fun intProp(description: String): JSONObject =
         JSONObject()
             .put("type", "INTEGER")
+            .put("description", description)
+
+    private fun boolProp(description: String): JSONObject =
+        JSONObject()
+            .put("type", "BOOLEAN")
             .put("description", description)
 
     private fun obj(vararg entries: Pair<String, JSONObject>): JSONObject {

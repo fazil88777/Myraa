@@ -55,6 +55,12 @@ object ToolHandler {
                 )
                 "answer_call" -> answerCall(context)
                 "reject_call" -> rejectCall(context)
+                "set_camera_access" -> {
+                    val on = args.optBoolean("enabled", false)
+                    CameraVision.setEnabled(context, on)
+                    if (on) "OK: camera access ON — front camera vision active while the voice session is live"
+                    else "OK: camera access OFF — camera closed"
+                }
                 "tap_text" ->
                     if (!isA11yOn()) A11Y_OFF
                     else if (MyraAccessibilityService.clickOnText(args.optString("text"))) "OK: tapped"
