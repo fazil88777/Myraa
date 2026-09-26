@@ -3,6 +3,7 @@ package com.myra.assistant.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -106,6 +107,43 @@ class MyraAccessibilityService : AccessibilityService() {
                 svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             } catch (_: Exception) {
                 false
+            }
+        }
+
+        /**
+         * Dump every actionable on-screen element with 0-1000 coordinates,
+         * so the model taps exact targets instead of guessing from video.
+         * One line per element: [index] "label" @ x,y
+         */
+        fun getScreenElements(): String {
+            val svc = instance ?: return "ERROR: service not running"
+            val root = svc.rootInActiveWindow ?: return "ERROR: no active window"
+            return try {
+                val metrics = svc.resources.displayMetrics
+                val w = metrics.widthPixels.toFloat()
+                val h = metrics.heightPixels.toFloat()
+                val out = StringBuilder()
+                var count = 0
+                val rect = Rect()
+                fun walk(node: AccessibilityNodeInfo?) {
+                    if (node == null || count >= 60) return
+                    if (node.isClickable || node.isEditable || node.isScrollable || node.isCheckable) {
+                        node.getBoundsInScreen(rect)
+                        val cx = ((rect.left + rect.right) / 2f / w * 1000).toInt().coerceIn(0, 1000)
+                        val cy = ((rect.top + rect.bottom) / 2f / h * 1000).toInt().coerceIn(0, 1000)
+                        val label = node.text?.toString()?.takeIf { it.isNotBlank() }
+                            ?: node.contentDescription?.toString()?.takeIf { it.isNotBlank() }
+                            ?: node.className?.toString()?.substringAfterLast('.')?.takeIf { it.isNotBlank() }
+                            ?: "?"
+                        out.append("[$count] \"$label\" @ $cx,$cy\n")
+                        count++
+                    }
+                    for (i in 0 until node.childCount) walk(node.getChild(i))
+                }
+                walk(root)
+                if (count == 0) "EMPTY: no actionable elements" else out.toString().trimEnd()
+            } catch (e: Exception) {
+                "ERROR: ${e.message}"
             }
         }
 
