@@ -158,6 +158,23 @@ object YouTubeOAuth {
         return null
     }
 
+    /** GET with the user's OAuth token. Returns null when login is needed/failed. */
+    fun authedGet(context: Context, url: String): JSONObject? {
+        val token = getValidAccessToken(context) ?: return null
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $token")
+            .build()
+        return try {
+            http.newCall(req).execute().use { resp ->
+                if (resp.code != 200) return null
+                resp.body?.string()?.let { JSONObject(it) }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     // ---------- local redirect catcher ----------
 
     private fun acceptLoop(srv: ServerSocket) {
