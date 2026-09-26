@@ -91,6 +91,11 @@
                 android:value="Scheduled WhatsApp message delivery" />
         </service>
 
+        <service
+            android:name=".service.HotwordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
     </application>
 
 </manifest>
