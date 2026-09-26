@@ -1,7 +1,9 @@
 package com.myra.assistant.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.view.View
@@ -9,6 +11,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
@@ -29,6 +32,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val REQ_CORE = 1001
+        private const val REQ_CAMERA = 1002
     }
 
     // One-time system dialog: "Allow MYRA to record your screen?"
@@ -76,6 +80,15 @@ class MainActivity : AppCompatActivity() {
 
         if (!PermissionHelper.hasAllCore(this)) {
             PermissionHelper.requestCore(this, REQ_CORE)
+        }
+
+        // Camera permission for camera vision ("camera on karo")
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.CAMERA), REQ_CAMERA
+            )
         }
 
         // If the app crashed last time, show the reason

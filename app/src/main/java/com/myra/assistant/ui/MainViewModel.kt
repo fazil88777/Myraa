@@ -8,6 +8,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.myra.assistant.ai.AudioEngine
+import com.myra.assistant.ai.CameraVision
 import com.myra.assistant.ai.GeminiLiveClient
 import com.myra.assistant.ai.ToolHandler
 import com.myra.assistant.data.ChatMessage
@@ -295,6 +296,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isSharing.value == true) {
             ScreenShareService.onFrame = { b64 -> sendVideoFrame(b64) }
         }
+        // Camera vision: feed front-camera frames while the session is live,
+        // only if the user enabled it ("camera on karo").
+        CameraVision.sessionLive = true
+        CameraVision.onFrame = { b64 -> sendVideoFrame(b64) }
+        CameraVision.refresh(getApplication())
     }
 
     fun sendTypedText(text: String) {
@@ -329,6 +335,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Tear down audio + socket without marking a manual stop. */
     private fun stopSessionInternal() {
+        CameraVision.sessionLive = false
+        CameraVision.refresh(getApplication())
+        CameraVision.onFrame = null
         try {
             audio?.stopCapture()
         } catch (_: Exception) {
