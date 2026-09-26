@@ -121,28 +121,18 @@ object ToolHandler {
                     if (YouTubeOAuth.isLinked(context)) {
                         "OK: YouTube login pehle se hua hua hai. Seedha 'full analyze batao' bolo."
                     } else {
-                        val flow = YouTubeOAuth.startDeviceFlow(context)
-                        if (flow == null) {
+                        val url = YouTubeOAuth.startLogin(context)
+                        if (url == null) {
                             "ERROR: login shuru nahi hua — pehle 'mera youtube client id ... hai' " +
-                                    "bol ke client ID save karwao."
+                                    "bol ke DESKTOP wali client ID save karwao (MYRA-TV wali nahi chalegi)."
                         } else {
-                            "LOGIN_CODE: user_code=${flow.userCode} | url=${flow.verificationUrl} | " +
-                                    "device_code=${flow.deviceCode} | interval=${flow.intervalSec}. " +
-                                    "User ko code sunao: Chrome mein google.com/device kholo, ye code dalo, " +
-                                    "Allow dabao, phir kaho 'code daal diya'. device_code aur interval " +
-                                    "mat sunao — sirf apne paas rakho."
+                            "LOGIN_URL: $url. User se kaho: Maine Chrome mein Google ka login page khol diya hai — " +
+                                    "wahan apne CHANNEL wale Gmail se login karke Allow dabao, phir wapas aa ke kaho 'code daal diya'. " +
+                                    "Koi code ya link mat sunao."
                         }
                     }
                 }
-                "youtube_login_confirm" -> {
-                    val deviceCode = args.optString("device_code")
-                    val interval = args.optInt("interval", 5)
-                    if (deviceCode.isBlank()) {
-                        "ERROR: device code nahi mila — 'youtube login karo' se dobara shuru karo."
-                    } else {
-                        YouTubeOAuth.awaitApproval(context, deviceCode, interval)
-                    }
-                }
+                "youtube_login_confirm" -> YouTubeOAuth.confirmLogin(context)
                 "youtube_analyze_full" -> YouTubeAnalytics.analyzeAdvanced(context)
                 "schedule_message" -> scheduleMessage(
                     args.optString("contact"),
