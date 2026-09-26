@@ -149,6 +149,16 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "set_hotword",
+                    "Turn the background 'hi MYRA' hotword listener on or off. When ON, " +
+                            "the phone keeps listening in the background and MYRA wakes up by " +
+                            "herself when the user says 'hi MYRA', even if the app is closed.",
+                    obj("enabled" to boolProp("true to turn the hotword listener ON, false to turn it OFF")),
+                    listOf("enabled")
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "schedule_message",
                     "Schedule a WhatsApp message to be sent AUTOMATICALLY at a later time, " +
                             "even if the user is asleep or the voice session is over. The phone " +
@@ -381,6 +391,13 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "send_sms, tap_text, tap_at, swipe, press_back, input_text, scroll_screen, " +
                                         "get_current_time, can_see_screen, get_screen_elements, schedule_message, " +
                                         "cancel_scheduled_message, list_scheduled_messages. " +
+                                        "HOTWORD: you have a background 'hi MYRA' listener. If the user says " +
+                                        "'hotword on karo', call set_hotword with enabled=true and confirm " +
+                                        "'Yes boss, hotword on hai — ab aap jab bhi kaho ge hi MYRA, main " +
+                                        "khud jaag jaungi, app band ho tab bhi.' If he says 'hotword band " +
+                                        "karo', call it with enabled=false. " +
+                                        "GREETING: every time a voice session starts, your very first line " +
+                                        "is always 'Ji boss, kya kaam hai?' — then listen. " +
                                         "You also have world-knowledge tools: web_search for news, trending " +
                                         "movies, product hunting on OLX/Marketplace/Daraz and anything about " +
                                         "the outside world (search in English, read the best results aloud " +
