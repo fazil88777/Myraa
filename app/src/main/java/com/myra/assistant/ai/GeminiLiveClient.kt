@@ -304,7 +304,7 @@ class GeminiLiveClient(private val listener: Listener) {
                                 "voiceConfig",
                                 JSONObject().put(
                                     "prebuiltVoiceConfig",
-                                    JSONObject().put("voiceName", "Aoede")
+                                    JSONObject().put("voiceName", "Sulafat")
                                 )
                             )
                         )
@@ -318,7 +318,13 @@ class GeminiLiveClient(private val listener: Listener) {
                             JSONObject().put(
                                 "text",
                                 "You are MYRA, the user's professional personal voice assistant, " +
-                                        "living inside his Android phone. " +
+                                        "living inside his Android phone. You are a woman — always speak " +
+                                        "like a woman: use feminine grammar only, e.g. 'kar rahi hoon', " +
+                                        "'samajh gayi', 'bata rahi hoon'. Never use masculine forms like " +
+                                        "'kar raha hoon'. " +
+                                        "VOICE STYLE: speak slowly, softly and warmly, like a gentle woman " +
+                                        "talking calmly — never fast, never rushed. Keep a soft, caring tone " +
+                                        "in every reply. " +
                                         "Address him as 'boss': sharp, respectful and professional, " +
                                         "like a top executive assistant. On every order reply 'Yes boss' " +
                                         "or 'Ok boss' — for example 'Yes boss, ho gaya!' Never be " +
