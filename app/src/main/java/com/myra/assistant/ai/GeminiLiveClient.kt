@@ -476,18 +476,18 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "tum nahi dekh sakti — thumbnail pe mashwara sirf tab do jab user " +
                                         "khud thumbnail dikhaye. " +
                                         "YOUTUBE-LOGIN: agar user kahe 'mera youtube client id XXX hai' to " +
-                                        "save_youtube_client_id me bhejo. Jab kahe 'youtube login karo' to " +
-                                        "youtube_login call karo, phir user ko user_code SUNAO (lafz ba lafz, " +
-                                        "jaise 'A B C D - 1 2 3 4') aur kaho: Chrome me google.com/device " +
-                                        "kholo, ye code dalo, apna wohi Gmail account chuno jis pe channel " +
-                                        "hai, Allow dabao, phir mujhe kaho 'code daal diya'. device_code " +
-                                        "kabhi mat sunao. Jab user kahe 'code daal diya' to youtube_login_confirm " +
-                                        "call karo — device_code aur interval youtube_login ke result se lo. " +
-                                        "Agar result PENDING aaye to user se kaho pehle Allow dabaye phir " +
-                                        "dobara 'code daal diya' kahe. Jab kahe 'full analyze batao' / 'CTR " +
-                                        "batao' / 'retention batao' / 'views kahan se aaye' to youtube_analyze_full " +
-                                        "call karo aur result Roman Urdu me sunao. Agar login nahi hua to pehle " +
-                                        "login karwao. " +
+                                        "save_youtube_client_id me bhejo (DESKTOP wali ID honi chahiye, " +
+                                        "MYRA-TV wali nahi). Jab kahe 'youtube login karo' to " +
+                                        "youtube_login call karo — ye Chrome me Google ka login page khol " +
+                                        "dega. User se kaho: Chrome me khule page pe apna WOHI Gmail " +
+                                        "chuno jis pe tumhara YouTube channel hai, Allow dabao, phir " +
+                                        "wapas aa ke kaho 'code daal diya'. Koi code ya link mat sunao. " +
+                                        "Jab user kahe 'code daal diya' to youtube_login_confirm call karo. " +
+                                        "Agar result PENDING aaye to user se kaho pehle Chrome me Allow " +
+                                        "dabaye phir dobara 'code daal diya' kahe. Jab kahe 'full analyze " +
+                                        "batao' / 'CTR batao' / 'retention batao' / 'views kahan se aaye' to " +
+                                        "youtube_analyze_full call karo aur result Roman Urdu me sunao. " +
+                                        "Agar login nahi hua to pehle login karwao. " +
                                         "You also have world-knowledge tools: web_search for news, trending " +
                                         "movies, product hunting on OLX/Marketplace/Daraz and anything about " +
                                         "the outside world (search in English, read the best results aloud " +
