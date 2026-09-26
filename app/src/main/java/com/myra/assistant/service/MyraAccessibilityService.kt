@@ -120,22 +120,63 @@ class MyraAccessibilityService : AccessibilityService() {
         }
 
         /**
-         * Tap the text node directly by its coordinates, slightly right of center
-         * (away from the left-side profile photo in chat rows).
+         * Find a search-result row for [q]: a NON-editable node whose text
+         * matches, walked up to its clickable row container. Skips the search
+         * box itself (it holds the query text too).
          */
-        fun tapTextCoords(text: String): Boolean {
+        private fun findResultRow(root: AccessibilityNodeInfo, q: String): AccessibilityNodeInfo? {
+            val stack = ArrayDeque<AccessibilityNodeInfo>()
+            stack.add(root)
+            while (stack.isNotEmpty()) {
+                val n = stack.removeLast()
+                try {
+                    val t = n.text?.toString()?.lowercase(Locale.US)
+                    val editable = n.isEditable || n.className?.toString()?.contains("EditText") == true
+                    if (!editable && !n.isFocused && t != null && t.contains(q)) {
+                        var p: AccessibilityNodeInfo? = n
+                        var depth = 0
+                        while (p != null && depth < 8) {
+                            if (p.isClickable) return p
+                            p = p.parent
+                            depth++
+                        }
+                        return n
+                    }
+                    for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
+                } catch (_: Exception) {
+                }
+            }
+            return null
+        }
+
+        /**
+         * Tap a search result row for [text] on the row's right side
+         * (away from the left-side profile photo). Never taps the search box.
+         */
+        fun tapSearchResult(text: String): Boolean {
             if (text.isBlank()) return false
-            val root = instance?.rootInActiveWindow ?: return false
+            val svc = instance ?: return false
+            val root = svc.rootInActiveWindow ?: return false
             return try {
-                val hit = findTextContains(root, text.lowercase(Locale.US)) ?: return false
-                val svc = instance ?: return false
+                val row = findResultRow(root, text.lowercase(Locale.US)) ?: return false
                 val dm = svc.resources.displayMetrics
                 val r = Rect()
-                hit.getBoundsInScreen(r)
-                val x = ((r.centerX() + r.width() * 0.25f) * 1000f / dm.widthPixels)
+                row.getBoundsInScreen(r)
+                val x = ((r.left + r.width() * 0.75f) * 1000f / dm.widthPixels)
                     .toInt().coerceIn(0, 1000)
                 val y = (r.centerY() * 1000f / dm.heightPixels).toInt().coerceIn(0, 1000)
                 tapAt(x, y)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /** True when WhatsApp search is still showing (search box holds [contact]). */
+        private fun searchBoxStillActive(contact: String): Boolean {
+            val root = instance?.rootInActiveWindow ?: return false
+            return try {
+                val ed = findEditable(root) ?: return false
+                ed.text?.toString()?.trim().equals(contact, ignoreCase = true)
             } catch (_: Exception) {
                 false
             }
@@ -191,17 +232,27 @@ class MyraAccessibilityService : AccessibilityService() {
                 Thread.sleep(800)
                 if (!inputText(contact)) return "ERROR: search mein naam type nahi hua"
                 Thread.sleep(1800)
-                // Tap the chat ROW by the name's coordinates (never the photo).
-                if (!tapTextCoords(contact)) return "ERROR: '$contact' ka chat nahi mila"
-                Thread.sleep(1500)
-                // If the tap opened the contact card instead of the chat,
-                // use the card's message icon to open the chat.
-                if (isContactCard()) {
-                    if (!tapOnDescContains("message") && !tapOnDescContains("chat")) {
-                        return "ERROR: contact card se chat nahi khula"
+                // Open the chat from search results (up to 2 tries). The search
+                // box itself holds the contact name, so result rows are tapped
+                // while editable nodes are skipped.
+                var chatOpen = false
+                repeat(2) {
+                    if (tapSearchResult(contact)) {
+                        Thread.sleep(1500)
+                        // If the tap opened the contact card instead of the chat,
+                        // use the card's message icon to open the chat.
+                        if (isContactCard()) {
+                            if (tapOnDescContains("message") || tapOnDescContains("chat")) {
+                                Thread.sleep(1500)
+                            }
+                        }
+                        if (!isContactCard() && !searchBoxStillActive(contact)) {
+                            chatOpen = true
+                            return@repeat
+                        }
                     }
-                    Thread.sleep(1500)
                 }
+                if (!chatOpen) return "ERROR: '$contact' ka chat nahi khula"
                 // Focus the chat input field directly, then type.
                 if (!focusEditableField()) return "ERROR: chat ka message box nahi mila"
                 Thread.sleep(500)
