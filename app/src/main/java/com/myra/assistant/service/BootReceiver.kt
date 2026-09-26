@@ -1,11 +1,14 @@
 package com.myra.assistant.service
 
-import android.content.*
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
 import androidx.core.content.ContextCompat
 import com.myra.assistant.util.Prefs
 
 /**
- * Restarts the floating orb after device boot when the orb is enabled.
+ * Restarts the floating orb after device boot when the orb is enabled,
+ * and re-arms all scheduled-message alarms.
  */
 class BootReceiver : BroadcastReceiver() {
 
@@ -19,6 +22,10 @@ class BootReceiver : BroadcastReceiver() {
                         Intent(context, FloatingOrbService::class.java)
                     )
                 }
+            } catch (_: Exception) {
+            }
+            try {
+                ScheduledMessageReceiver.rescheduleAll(context)
             } catch (_: Exception) {
             }
         }

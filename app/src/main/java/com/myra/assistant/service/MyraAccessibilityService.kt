@@ -44,6 +44,123 @@ class MyraAccessibilityService : AccessibilityService() {
             }
         }
 
+        /** Find the first node whose text contains [text] (case-insensitive). */
+        private fun findTextContains(node: AccessibilityNodeInfo?, text: String): AccessibilityNodeInfo? {
+            if (node == null) return null
+            val t = node.text?.toString()?.lowercase(Locale.US) ?: ""
+            if (text in t) return node
+            for (i in 0 until node.childCount) {
+                val f = findTextContains(node.getChild(i), text)
+                if (f != null) return f
+            }
+            return null
+        }
+
+        /** Find the first node whose content-description contains [sub] (case-insensitive). */
+        private fun findDescContains(node: AccessibilityNodeInfo?, sub: String): AccessibilityNodeInfo? {
+            if (node == null) return null
+            val d = node.contentDescription?.toString()?.lowercase(Locale.US) ?: ""
+            if (sub in d) return node
+            for (i in 0 until node.childCount) {
+                val f = findDescContains(node.getChild(i), sub)
+                if (f != null) return f
+            }
+            return null
+        }
+
+        /** Click the nearest clickable ancestor of [node], or tap its center. */
+        private fun activateNode(node: AccessibilityNodeInfo): Boolean {
+            var n: AccessibilityNodeInfo? = node
+            var guard = 0
+            while (n != null && !n.isClickable && guard < 8) {
+                n = n.parent
+                guard++
+            }
+            if (n != null && n.isClickable) {
+                try {
+                    if (n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+                } catch (_: Exception) {
+                }
+            }
+            return try {
+                val svc = instance ?: return false
+                val dm = svc.resources.displayMetrics
+                val r = Rect()
+                node.getBoundsInScreen(r)
+                val x = (r.centerX() * 1000f / dm.widthPixels).toInt().coerceIn(0, 1000)
+                val y = (r.centerY() * 1000f / dm.heightPixels).toInt().coerceIn(0, 1000)
+                tapAt(x, y)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /** Tap the first on-screen element whose text contains [text]. */
+        fun clickOnTextContains(text: String): Boolean {
+            if (text.isBlank()) return false
+            val root = instance?.rootInActiveWindow ?: return false
+            return try {
+                val hit = findTextContains(root, text.lowercase(Locale.US)) ?: return false
+                activateNode(hit)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /** Tap the first on-screen element whose content-description contains [sub]. */
+        fun tapOnDescContains(sub: String): Boolean {
+            if (sub.isBlank()) return false
+            val root = instance?.rootInActiveWindow ?: return false
+            return try {
+                val hit = findDescContains(root, sub.lowercase(Locale.US)) ?: return false
+                activateNode(hit)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /**
+         * Full WhatsApp send flow: open WhatsApp, find [contact]'s chat, type
+         * [message] and press the Send (paper-plane) button. Must be called
+         * off the main thread. Returns "OK: ..." or "ERROR: ...".
+         */
+        fun sendWhatsAppMessage(contact: String, message: String): String {
+            val svc = instance ?: return "ERROR: MYRA Accessibility service ON nahi hai"
+            try {
+                val launch = svc.packageManager.getLaunchIntentForPackage("com.whatsapp")
+                    ?: return "ERROR: WhatsApp installed nahi hai"
+                launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                svc.startActivity(launch)
+                Thread.sleep(2500)
+
+                // Be sure we are on the chats list (back out of any open chat).
+                if (!tapOnDescContains("search")) {
+                    pressBack()
+                    Thread.sleep(1200)
+                    if (!tapOnDescContains("search")) return "ERROR: WhatsApp search nahi mila"
+                }
+                Thread.sleep(800)
+                if (!inputText(contact)) return "ERROR: search mein naam type nahi hua"
+                Thread.sleep(1800)
+                if (!clickOnTextContains(contact)) return "ERROR: '$contact' ka chat nahi mila"
+                Thread.sleep(1500)
+                // Focus the message field, then type.
+                tapOnDescContains("message")
+                Thread.sleep(600)
+                if (!inputText(message)) return "ERROR: message type nahi hua"
+                Thread.sleep(1000)
+                // Press the Send (paper-plane) button.
+                if (!tapOnDescContains("send")) return "ERROR: Send button nahi mila"
+                Thread.sleep(1200)
+                pressBack()
+                Thread.sleep(500)
+                pressBack()
+                return "OK: WhatsApp par $contact ko message bhej diya"
+            } catch (e: Exception) {
+                return "ERROR: ${e.message}"
+            }
+        }
+
         fun inputText(text: String): Boolean {
             val svc = instance ?: return false
             return try {
