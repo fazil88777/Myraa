@@ -481,10 +481,14 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "youtube_login call karo — ye Chrome me Google ka login page khol " +
                                         "dega. User se kaho: Chrome me khule page pe apna WOHI Gmail " +
                                         "chuno jis pe tumhara YouTube channel hai, Allow dabao, phir " +
-                                        "wapas aa ke kaho 'code daal diya'. Koi code ya link mat sunao. " +
-                                        "Jab user kahe 'code daal diya' to youtube_login_confirm call karo. " +
+                                        "wapas aa ke kaho 'allow kar diya'. Koi code ya link mat sunao. " +
+                                        "BOHAT ZAROORI: is login me KOI code nahi hota — user se KABHI " +
+                                        "device code ya kisi qisam ka code mat mango, code ka zikr tak " +
+                                        "mat karo. Jab user kahe 'allow kar diya' (ya 'code daal diya' " +
+                                        "ya 'ho gaya') to foran youtube_login_confirm call karo, baghair " +
+                                        "koi sawal kiye. " +
                                         "Agar result PENDING aaye to user se kaho pehle Chrome me Allow " +
-                                        "dabaye phir dobara 'code daal diya' kahe. Jab kahe 'full analyze " +
+                                        "dabaye phir dobara 'allow kar diya' kahe. Jab kahe 'full analyze " +
                                         "batao' / 'CTR batao' / 'retention batao' / 'views kahan se aaye' to " +
                                         "youtube_analyze_full call karo aur result Roman Urdu me sunao. " +
                                         "Agar login nahi hua to pehle login karwao. " +
