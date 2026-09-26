@@ -149,6 +149,39 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "schedule_message",
+                    "Schedule a WhatsApp message to be sent AUTOMATICALLY at a later time, " +
+                            "even if the user is asleep or the voice session is over. The phone " +
+                            "sends it by itself at that time.",
+                    obj(
+                        "contact" to strProp("Person's name as in WhatsApp, e.g. Noor"),
+                        "message" to strProp("The exact message text to send"),
+                        "when_text" to strProp(
+                            "When to send, in the user's own words, e.g. '10 minute baad', " +
+                                    "'2 ghante baad', 'raat 12 baje', 'kal subah 8 baje'"
+                        )
+                    ),
+                    listOf("contact", "message", "when_text")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "cancel_scheduled_message",
+                    "Cancel a scheduled message by the person's name",
+                    obj("id_or_contact" to strProp("Contact name of the scheduled message to cancel")),
+                    listOf("id_or_contact")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "list_scheduled_messages",
+                    "List all scheduled (not yet sent) messages",
+                    JSONObject(),
+                    emptyList()
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "tap_text",
                     "Tap on-screen text OR an icon button by its name. Matches visible text " +
                             "first, then icon buttons by their description - e.g. 'Send' taps the " +
@@ -346,7 +379,8 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "Always reply in Roman Urdu unless the user uses another language. " +
                                         "You can control his phone with tools: open_app, search_youtube, make_call, " +
                                         "send_sms, tap_text, tap_at, swipe, press_back, input_text, scroll_screen, " +
-                                        "get_current_time, can_see_screen, get_screen_elements. " +
+                                        "get_current_time, can_see_screen, get_screen_elements, schedule_message, " +
+                                        "cancel_scheduled_message, list_scheduled_messages. " +
                                         "You also have world-knowledge tools: web_search for news, trending " +
                                         "movies, product hunting on OLX/Marketplace/Daraz and anything about " +
                                         "the outside world (search in English, read the best results aloud " +
@@ -375,6 +409,17 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "enabled=false. When camera frames arrive, you can see him — " +
                                         "describe what you see only when he asks. Never claim to see him " +
                                         "when the camera is off. " +
+                                        "SCHEDULED MESSAGES: if the user says 'Noor ko raat 12 baje birthday " +
+                                        "wish bhej dena' or '10 minute baad Mujad ko ye bhej dena', call " +
+                                        "schedule_message with the contact, the exact message, and when_text " +
+                                        "in his own words ('10 minute baad', 'raat 12 baje', 'kal subah 8 " +
+                                        "baje'). The phone sends it automatically at that time even if he " +
+                                        "is asleep or you are disconnected — confirm 'Yes boss, schedule ho " +
+                                        "gaya!' with the date and time. If he asks 'kaun se message scheduled " +
+                                        "hain', call list_scheduled_messages and read them out. If he says " +
+                                        "cancel, call cancel_scheduled_message with the contact's name. " +
+                                        "After the time passes he can ask 'message gaya?' — check the " +
+                                        "notification or just tell him the scheduled time has passed. " +
                                         "For anything visual (finding a button, a search bar, a chat, an icon), " +
                                         "ALWAYS first call get_screen_elements: it gives you the exact list of " +
                                         "on-screen elements with precise coordinates. Tap using those EXACT " +

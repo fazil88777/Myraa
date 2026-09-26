@@ -10,7 +10,9 @@ import android.provider.MediaStore
 import android.telecom.TelecomManager
 import android.telephony.SmsManager
 import com.myra.assistant.service.MyraAccessibilityService
+import com.myra.assistant.service.ScheduledMessageReceiver
 import com.myra.assistant.service.ScreenShareService
+import com.myra.assistant.util.ScheduledStore
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -18,6 +20,7 @@ import java.io.File
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -61,6 +64,17 @@ object ToolHandler {
                     if (on) "OK: camera access ON — front camera vision active while the voice session is live"
                     else "OK: camera access OFF — camera closed"
                 }
+                "schedule_message" -> scheduleMessage(
+                    args.optString("contact"),
+                    args.optString("message"),
+                    args.optString("when_text"),
+                    context
+                )
+                "cancel_scheduled_message" -> cancelScheduled(
+                    args.optString("id_or_contact"),
+                    context
+                )
+                "list_scheduled_messages" -> listScheduled(context)
                 "tap_text" ->
                     if (!isA11yOn()) A11Y_OFF
                     else if (MyraAccessibilityService.clickOnText(args.optString("text"))) "OK: tapped"
@@ -425,6 +439,106 @@ object ToolHandler {
         val parts = sm.divideMessage(message)
         sm.sendMultipartTextMessage(number, null, parts, null, null)
         return "OK: sms sent"
+    }
+
+    // ---------------- scheduled WhatsApp messages ----------------
+
+    private fun scheduleMessage(
+        contact: String,
+        message: String,
+        whenText: String,
+        context: Context
+    ): String {
+        if (contact.isBlank()) return "ERROR: contact ka naam nahi diya"
+        if (message.isBlank()) return "ERROR: message khaali hai"
+        val at = parseWhen(whenText, System.currentTimeMillis())
+            ?: return "ERROR: time samajh nahi aaya ('$whenText') — '10 minute baad', " +
+                    "'raat 12 baje' ya 'kal subah 8 baje' jaisa bolo"
+        if (at <= System.currentTimeMillis()) return "ERROR: ye time guzar chuka hai"
+        val task = ScheduledStore.Task(
+            System.currentTimeMillis(), contact.trim(), message.trim(), at
+        )
+        ScheduledStore.add(context, task)
+        val mode = ScheduledMessageReceiver.scheduleAlarm(context, task)
+        if (mode == "error") return "ERROR: alarm set nahi hua"
+        val whenStr = SimpleDateFormat("d MMM, h:mm a", Locale.US).format(Date(at))
+        val warn = if (mode == "inexact")
+            " (NOTE: exact-alarm ki permission nahi hai — kuch minute late ho sakta hai. " +
+                    "Phone Settings > Apps > MYRA > Alarms & reminders me Allow karo)"
+        else ""
+        return "OK: scheduled — ${task.contact} ko $whenStr par WhatsApp message jayega$warn"
+    }
+
+    private fun cancelScheduled(idOrContact: String, context: Context): String {
+        val q = idOrContact.trim()
+        if (q.isEmpty()) return "ERROR: kaunsa cancel karna hai? naam bolo"
+        val tasks = ScheduledStore.all(context)
+        val hit = tasks.find { it.id.toString() == q }
+            ?: tasks.find { it.contact.contains(q, ignoreCase = true) }
+            ?: return "ERROR: '$q' ke liye koi scheduled message nahi mila"
+        ScheduledStore.remove(context, hit.id)
+        ScheduledMessageReceiver.cancelAlarm(context, hit.id)
+        return "OK: cancelled — ${hit.contact} ko scheduled message hata diya"
+    }
+
+    private fun listScheduled(context: Context): String {
+        val tasks = ScheduledStore.upcoming(context)
+        if (tasks.isEmpty()) return "OK: koi scheduled message nahi hai"
+        val sdf = SimpleDateFormat("d MMM h:mm a", Locale.US)
+        return "OK:\n" + tasks.joinToString("\n") {
+            "• ${it.contact} — ${sdf.format(Date(it.atMillis))}: ${it.message.take(60)}"
+        }
+    }
+
+    /**
+     * Parses Roman Urdu / English time expressions:
+     * "10 minute baad", "2 ghante baad", "adha ghanta", "in 10 minutes",
+     * "raat 12 baje", "subah 8 baje", "shaam 6 baje", "kal subah 8 baje".
+     * Returns epoch millis, or null if unparseable.
+     */
+    private fun parseWhen(text: String, now: Long): Long? {
+        val t = text.lowercase(Locale.US).trim()
+        if (t.isEmpty()) return null
+
+        fun numBefore(pattern: String): Int? =
+            Regex("(\\d+)\\s*$pattern").find(t)?.groupValues?.get(1)?.toIntOrNull()
+
+        numBefore("(minute|min|mint)")?.let { return now + it * 60_000L }
+        Regex("in\\s+(\\d+)\\s*min").find(t)?.groupValues?.get(1)?.toIntOrNull()?.let {
+            return now + it * 60_000L
+        }
+        numBefore("(ghant[ae]|hour|hr)")?.let { return now + it * 3_600_000L }
+        if ("adha ghanta" in t || "half hour" in t || "half an hour" in t) {
+            return now + 30 * 60_000L
+        }
+
+        val m = Regex("(\\d{1,2})(?::(\\d{2}))?\\s*(baje)?").find(t) ?: return null
+        var h = m.groupValues[1].toIntOrNull() ?: return null
+        if (h > 23) return null
+        val min = m.groupValues[2].takeIf { it.isNotEmpty() }?.toIntOrNull() ?: 0
+        val isKal = "kal" in t || "tomorrow" in t
+        val night = "raat" in t || "pm" in t || "shaam" in t
+        val morning = "subah" in t || "subha" in t || "am" in t || "morning" in t
+        val h24 = when {
+            night && h < 12 -> h + 12
+            night && h == 12 -> 0      // "raat 12 baje" = midnight
+            morning && h == 12 -> 0
+            morning -> h
+            else -> h
+        }
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = now
+        if (isKal) cal.add(Calendar.DAY_OF_YEAR, 1)
+        cal.set(Calendar.HOUR_OF_DAY, h24)
+        cal.set(Calendar.MINUTE, min)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        var at = cal.timeInMillis
+        if (!isKal && at <= now) {
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+            at = cal.timeInMillis
+        }
+        return at
     }
 
     private fun answerCall(context: Context): String {
