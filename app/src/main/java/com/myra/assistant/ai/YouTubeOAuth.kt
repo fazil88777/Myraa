@@ -1,128 +1,133 @@
 package com.myra.assistant.ai
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.util.Base64
 import com.myra.assistant.util.YouTubeStore
-import okhttp3.FormBody
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.PrintWriter
+import java.net.ServerSocket
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.security.MessageDigest
+import java.security.SecureRandom
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONObject
-import java.util.concurrent.TimeUnit
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
- * YouTube OAuth via the Device Flow — no SHA-1, no redirect URIs, no extra SDK.
- * User enters a short code at google.com/device in Chrome, app polls for tokens.
- * Only the READ-ONLY scope is requested: yt-analytics.readonly.
+ * YouTube OAuth — installed-app flow (loopback redirect + PKCE).
+ *
+ * Device flow (google.com/device) does NOT support the yt-analytics.readonly
+ * scope ("Invalid device flow scope"), so we open Google's login page in
+ * Chrome and catch the redirect on http://127.0.0.1:<port>/ locally.
+ * Needs the DESKTOP OAuth client ID ("MYRA"), not the TV one ("MYRA-TV").
+ * Read-only scope; tokens stay on the device.
  */
 object YouTubeOAuth {
+    private const val SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
+    private val http = OkHttpClient()
 
-    const val SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
+    @Volatile private var server: ServerSocket? = null
+    @Volatile private var authCode: String? = null
+    @Volatile private var verifier: String? = null
+    @Volatile private var port: Int = 0
 
-    private val http: OkHttpClient = OkHttpClient.Builder()
-        .callTimeout(25, TimeUnit.SECONDS)
-        .build()
+    fun isLinked(context: Context): Boolean =
+        YouTubeStore.getRefreshToken(context).isNotBlank() ||
+                getValidAccessToken(context) != null
 
-    data class DeviceFlow(
-        val deviceCode: String,
-        val userCode: String,
-        val verificationUrl: String,
-        val intervalSec: Int
-    )
-
-    private fun postForm(url: String, vararg params: Pair<String, String>): Pair<Int, JSONObject?> {
-        return try {
-            val body = FormBody.Builder()
-            for ((k, v) in params) body.add(k, v)
-            val req = Request.Builder().url(url).post(body.build()).build()
-            http.newCall(req).execute().use { resp ->
-                val json = try {
-                    JSONObject(resp.body?.string() ?: "{}")
-                } catch (_: Exception) {
-                    JSONObject()
-                }
-                resp.code to json
-            }
-        } catch (_: Exception) {
-            -1 to null
-        }
-    }
-
-    /** Step 1: get the user code MYRA will speak out. */
-    fun startDeviceFlow(context: Context): DeviceFlow? {
+    /**
+     * Step 1: start a tiny local server, open Google login in Chrome.
+     * Returns the auth URL (already opened), or null if client ID missing.
+     */
+    fun startLogin(context: Context): String? {
         val clientId = YouTubeStore.getOAuthClientId(context)
         if (clientId.isBlank()) return null
-        val (code, json) = postForm(
-            "https://oauth2.googleapis.com/device/code",
-            "client_id" to clientId,
-            "scope" to SCOPE
-        )
-        if (code != 200 || json == null) return null
-        val deviceCode = json.optString("device_code")
-        val userCode = json.optString("user_code")
-        if (deviceCode.isBlank() || userCode.isBlank()) return null
-        return DeviceFlow(
-            deviceCode = deviceCode,
-            userCode = userCode,
-            verificationUrl = json.optString("verification_url", "https://www.google.com/device"),
-            intervalSec = json.optInt("interval", 5)
-        )
-    }
-
-    /** Step 2 (single poll): returns OK / PENDING / DENIED / ERROR:... */
-    private fun tryPoll(context: Context, deviceCode: String): Triple<String, String?, String?> {
-        val clientId = YouTubeStore.getOAuthClientId(context)
-        val (code, json) = postForm(
-            "https://oauth2.googleapis.com/token",
-            "client_id" to clientId,
-            "device_code" to deviceCode,
-            "grant_type" to "urn:ietf:params:oauth:grant-type:device_code"
-        )
-        if (code == 200 && json != null) {
-            val access = json.optString("access_token")
-            val refresh = json.optString("refresh_token")
-            val expiresIn = json.optLong("expires_in", 3600)
-            if (access.isNotBlank()) {
-                YouTubeStore.setAccessToken(context, access)
-                if (refresh.isNotBlank()) YouTubeStore.setRefreshToken(context, refresh)
-                YouTubeStore.setTokenExpiry(
-                    context,
-                    System.currentTimeMillis() + expiresIn * 1000
-                )
-                return Triple("OK", access, refresh)
+        stopServer()
+        authCode = null
+        verifier = null
+        return try {
+            val v = genVerifier()
+            verifier = v
+            val srv = ServerSocket(0)
+            port = srv.localPort
+            server = srv
+            Thread { acceptLoop(srv) }.apply { isDaemon = true; start() }
+            val redirect = "http://127.0.0.1:$port/"
+            val url = "https://accounts.google.com/o/oauth2/v2/auth" +
+                    "?client_id=${URLEncoder.encode(clientId, "UTF-8")}" +
+                    "&redirect_uri=${URLEncoder.encode(redirect, "UTF-8")}" +
+                    "&response_type=code" +
+                    "&scope=${URLEncoder.encode(SCOPE, "UTF-8")}" +
+                    "&code_challenge=${pkceChallenge(v)}" +
+                    "&code_challenge_method=S256" +
+                    "&access_type=offline" +
+                    "&prompt=consent"
+            val i = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-        }
-        val err = json?.optString("error") ?: ""
-        return when {
-            err == "authorization_pending" || err == "slow_down" -> Triple("PENDING", null, null)
-            err == "access_denied" -> Triple("DENIED", null, null)
-            err == "expired_token" -> Triple("EXPIRED", null, null)
-            else -> Triple("ERROR:$err", null, null)
+            context.startActivity(i)
+            url
+        } catch (_: Exception) {
+            stopServer()
+            null
         }
     }
 
     /**
-     * Step 2 (blocking, up to ~75s): waits until the user approves (or denies).
-     * MYRA calls this after the user says "code daal diya".
+     * Step 2: called after the user taps Allow in Chrome.
+     * Exchanges the captured code for tokens and saves them.
      */
-    fun awaitApproval(context: Context, deviceCode: String, intervalSec: Int): String {
-        val deadline = System.currentTimeMillis() + 75_000L
-        val wait = (intervalSec * 1000L).coerceAtLeast(5000L)
-        while (System.currentTimeMillis() < deadline) {
-            val poll = tryPoll(context, deviceCode)
-            val status = poll.first
-            when (status) {
-                "OK" -> return "OK: YouTube login ho gaya! Ab 'full analyze batao' bolo."
-                "DENIED" -> return "ERROR: tumne access deny kar diya. Dobara login karna ho to 'youtube login karo' bolo."
-                "EXPIRED" -> return "ERROR: code expire ho gaya. 'youtube login karo' se naya code lo."
-                else -> if (status.startsWith("ERROR:")) return status
-            }
-            try {
-                Thread.sleep(wait)
-            } catch (_: InterruptedException) {
-                break
-            }
+    fun confirmLogin(context: Context): String {
+        val code = authCode
+        if (code.isNullOrBlank()) {
+            return if (server != null)
+                "PENDING: lagta hai abhi Allow nahi daba. Chrome mein khule Google page pe " +
+                        "apne CHANNEL wale Gmail se login karke Allow dabao, phir 'code daal diya' dobara bolo."
+            else
+                "ERROR: login session nahi mili — 'youtube login karo' se dobara shuru karo."
         }
-        return "PENDING: abhi approve nahi hua lagta hai. Pehle Chrome mein code daal ke " +
-                "Allow dabao, phir 'code daal diya' dobara bolo."
+        val clientId = YouTubeStore.getOAuthClientId(context)
+        val v = verifier
+        if (clientId.isBlank() || v.isNullOrBlank()) {
+            stopServer()
+            return "ERROR: client ID missing — pehle 'mera youtube client id ... hai' bolo (DESKTOP wali)."
+        }
+        return try {
+            val redirect = "http://127.0.0.1:$port/"
+            val (httpCode, json) = postForm(
+                "https://oauth2.googleapis.com/token",
+                "client_id" to clientId,
+                "code" to code,
+                "code_verifier" to v,
+                "redirect_uri" to redirect,
+                "grant_type" to "authorization_code"
+            )
+            stopServer()
+            if (httpCode == 200 && json != null) {
+                val access = json.optString("access_token")
+                val refresh = json.optString("refresh_token")
+                val expiresIn = json.optLong("expires_in", 3600)
+                if (access.isBlank()) {
+                    return "ERROR: token nahi mila. 'youtube login karo' se dobara try karo."
+                }
+                YouTubeStore.setAccessToken(context, access)
+                if (refresh.isNotBlank()) YouTubeStore.setRefreshToken(context, refresh)
+                YouTubeStore.setTokenExpiry(context, System.currentTimeMillis() + expiresIn * 1000)
+                "OK: YouTube login ho gaya! Ab 'full analyze batao' bolo."
+            } else {
+                val err = json?.optString("error") ?: "unknown"
+                "ERROR: Google ne mana kar diya ($err). 'youtube login karo' se dobara try karo."
+            }
+        } catch (e: Exception) {
+            stopServer()
+            "ERROR: network masla. Dobara 'youtube login karo' bolo."
+        }
     }
 
     /** Returns a valid access token, refreshing silently when needed. Null = login needed. */
@@ -145,50 +150,102 @@ object YouTubeOAuth {
             val access = json.optString("access_token")
             if (access.isNotBlank()) {
                 YouTubeStore.setAccessToken(context, access)
-                YouTubeStore.setTokenExpiry(
-                    context,
-                    now + json.optLong("expires_in", 3600) * 1000
-                )
+                val expiresIn = json.optLong("expires_in", 3600)
+                YouTubeStore.setTokenExpiry(context, now + expiresIn * 1000)
                 return access
             }
         }
         return null
     }
 
-    fun isLinked(context: Context): Boolean =
-        YouTubeStore.getRefreshToken(context).isNotBlank()
+    // ---------- local redirect catcher ----------
 
-    /** Authenticated GET against googleapis; auto-refreshes once on 401. */
-    fun authedGet(context: Context, url: String): JSONObject? {
-        fun call(token: String): Pair<Int, JSONObject?> {
-            return try {
-                val req = Request.Builder()
-                    .url(url)
-                    .header("Authorization", "Bearer $token")
-                    .header("User-Agent", "MYRA/1.0")
-                    .build()
-                http.newCall(req).execute().use { resp ->
-                    val json = try {
-                        JSONObject(resp.body?.string() ?: "{}")
-                    } catch (_: Exception) {
-                        JSONObject()
-                    }
-                    resp.code to json
+    private fun acceptLoop(srv: ServerSocket) {
+        try {
+            srv.soTimeout = 300_000 // 5 minutes max
+            while (authCode == null) {
+                val sock = try {
+                    srv.accept()
+                } catch (_: Exception) {
+                    break
                 }
-            } catch (_: Exception) {
-                -1 to null
+                try {
+                    val reader = BufferedReader(InputStreamReader(sock.getInputStream()))
+                    val requestLine = reader.readLine() ?: ""
+                    var line: String?
+                    do {
+                        line = reader.readLine()
+                    } while (line != null && line.isNotEmpty())
+                    val code = Regex("[?&]code=([^& ]+)").find(requestLine)?.groupValues?.get(1)
+                    val err = Regex("[?&]error=([^& ]+)").find(requestLine)?.groupValues?.get(1)
+                    val ok = !code.isNullOrBlank()
+                    if (ok) authCode = URLDecoder.decode(code, "UTF-8")
+                    val msg = if (ok) "Ho gaya! ✅<br>Wapas MYRA app mein jao aur kaho:<br><b>code daal diya</b>"
+                    else "Error: ${err ?: "pata nahi"} — MYRA app mein dobara try karo"
+                    val html = "<html><body style='font-family:sans-serif;text-align:center;" +
+                            "padding-top:60px'><h2>$msg</h2></body></html>"
+                    val bytes = html.toByteArray(Charsets.UTF_8)
+                    val out = PrintWriter(sock.getOutputStream())
+                    out.print(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" +
+                                "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
+                    )
+                    out.flush()
+                    sock.getOutputStream().write(bytes)
+                    sock.getOutputStream().flush()
+                    sock.close()
+                    if (ok) break
+                } catch (_: Exception) {
+                    try {
+                        sock.close()
+                    } catch (_: Exception) {
+                    }
+                }
             }
+        } catch (_: Exception) {
+        } finally {
+            try {
+                srv.close()
+            } catch (_: Exception) {
+            }
+            server = null
         }
-        var token = getValidAccessToken(context) ?: return null
-        var (code, json) = call(token)
-        if (code == 401) {
-            YouTubeStore.setAccessToken(context, "")
-            YouTubeStore.setTokenExpiry(context, 0)
-            token = getValidAccessToken(context) ?: return null
-            val r = call(token)
-            code = r.first
-            json = r.second
+    }
+
+    private fun stopServer() {
+        try {
+            server?.close()
+        } catch (_: Exception) {
         }
-        return if (code == 200) json else null
+        server = null
+    }
+
+    // ---------- helpers ----------
+
+    private fun genVerifier(): String {
+        val bytes = ByteArray(48)
+        SecureRandom().nextBytes(bytes)
+        return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+    }
+
+    private fun pkceChallenge(verifier: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII))
+        return Base64.encodeToString(digest, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+    }
+
+    private fun postForm(url: String, vararg fields: Pair<String, String>): Pair<Int, JSONObject?> {
+        val body = fields.joinToString("&") { (k, v) ->
+            "${URLEncoder.encode(k, "UTF-8")}=${URLEncoder.encode(v, "UTF-8")}"
+        }.toRequestBody("application/x-www-form-urlencoded".toMediaType())
+        val req = Request.Builder().url(url).post(body).build()
+        http.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            val json = try {
+                JSONObject(text)
+            } catch (_: Exception) {
+                null
+            }
+            return resp.code to json
+        }
     }
 }
