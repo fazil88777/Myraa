@@ -98,7 +98,8 @@ class MainActivity : AppCompatActivity() {
             in 17..21 -> "Good evening"
             else -> "Good night"
         }
-        return "$g, Jaan"
+        val name = Prefs.userName.trim()
+        return if (name.isNotBlank()) "$g, $name boss" else "$g, boss"
     }
 
     fun selectTab(tab: String) {

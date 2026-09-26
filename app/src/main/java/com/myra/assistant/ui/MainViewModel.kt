@@ -50,6 +50,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var lastModelResponseAt = 0L
     private var pendingInputMsgIndex = -1
     private var watchdogStarted = false
+    // Silence-fix state: auto-reconnect when the socket dies, and detect a
+    // "half-dead" socket (mic hears the user, but no transcription ever arrives).
+    private var manualStop = false
+    private var reconnectScheduled = false
+    private var reconnectAttempts = 0
+    private var sessionGen = 0
+    private var lastVoiceActivityAt = 0L
     private val watchdogHandler = Handler(Looper.getMainLooper())
     // Nudge timer: reminds the model to speak after a tool call if it stays silent.
     private val nudgeHandler = Handler(Looper.getMainLooper())
@@ -77,21 +84,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (lastUserSpeechAt > lastModelResponseAt && now - lastUserSpeechAt > 20_000) {
             _statusText.postValue("Reconnecting...")
             autoReconnect()
+            return
+        }
+        // Half-dead socket: the mic clearly hears the user speaking, but no
+        // transcription ever arrives and the model never reacts (server side
+        // is gone without closing). Compare against the latest real progress
+        // so a normal answered question never triggers a false reconnect.
+        val lastProgress = maxOf(lastUserSpeechAt, lastModelResponseAt)
+        if (lastVoiceActivityAt > lastProgress &&
+            now - lastVoiceActivityAt > 12_000
+        ) {
+            _statusText.postValue("Reconnecting...")
+            autoReconnect()
         }
     }
 
+    /** Reconnect automatically after an unexpected drop (never after a manual stop). */
+    private fun scheduleReconnect() {
+        if (manualStop || reconnectScheduled) return
+        if (_isConnected.value == true) return
+        autoReconnect()
+    }
+
+    /**
+     * Stop everything and start a fresh session, with backoff: if the network
+     * is truly down, give up after 5 tries instead of looping forever.
+     */
     private fun autoReconnect() {
+        if (manualStop || reconnectScheduled) return
         val key = savedApiKey ?: return
-        try {
-            stopSession()
-        } catch (_: Exception) {
+        if (reconnectAttempts >= 5) {
+            _statusText.postValue("Connection lost — net check karke dobara connect dabao, boss")
+            return
         }
+        reconnectAttempts++
+        reconnectScheduled = true
+        val gen = sessionGen
+        _statusText.postValue("Reconnecting...")
+        stopSessionInternal()
         watchdogHandler.postDelayed({
+            reconnectScheduled = false
+            // User tapped stop/start meanwhile -> respect his action, don't restart.
+            if (manualStop || gen != sessionGen) return@postDelayed
             try {
                 startSession(key)
             } catch (_: Exception) {
             }
-        }, 1500)
+        }, 2000L * reconnectAttempts)
+    }
+
+    /** 16-bit mono PCM voice-activity check: true when someone is actually speaking. */
+    private fun isLoud(pcm16: ByteArray): Boolean {
+        var peak = 0
+        var i = 0
+        while (i + 1 < pcm16.size) {
+            val s = (pcm16[i + 1].toInt() shl 8) or (pcm16[i].toInt() and 0xFF)
+            val a = kotlin.math.abs(s)
+            if (a > peak) peak = a
+            i += 2
+        }
+        return peak > 1200
     }
 
     private fun showInputTranscription(text: String) {
@@ -129,7 +181,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startSession(apiKey: String) {
         if (_isConnected.value == true) return
         savedApiKey = apiKey
+        sessionGen++
+        manualStop = false
+        reconnectScheduled = false
+        reconnectAttempts = 0
         lastUserSpeechAt = 0L
+        lastVoiceActivityAt = 0L
         lastModelActivityAt = System.currentTimeMillis()
         lastModelResponseAt = System.currentTimeMillis()
         pendingInputMsgIndex = -1
@@ -144,11 +201,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onSetupComplete() {
                 _isConnected.postValue(true)
+                reconnectAttempts = 0
+                reconnectScheduled = false
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
                 _statusText.postValue("Listening...")
                 try {
                     engine.startCapture { chunk ->
+                        // Voice-activity tracking for the half-dead-socket watchdog:
+                        // ignore mic energy right after the model spoke (echo).
+                        if (isLoud(chunk) &&
+                            System.currentTimeMillis() - lastModelResponseAt > 3000
+                        ) {
+                            lastVoiceActivityAt = System.currentTimeMillis()
+                        }
                         client?.sendAudio(chunk)
                     }
                 } catch (e: Exception) {
@@ -199,7 +265,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val sentAt = System.currentTimeMillis()
                     nudgeHandler.postDelayed({
                         if (_isConnected.value == true && lastModelResponseAt <= sentAt) {
-                            client?.sendText("Mukhtasir mein pyaar se batao ke tumne abhi kya kiya.")
+                            client?.sendText("Mukhtasir mein batao ke tumne abhi kya kiya, boss style mein.")
                         }
                     }, 7000)
                 }
@@ -214,11 +280,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onError(msg: String) {
                 _statusText.postValue("Error: $msg")
+                scheduleReconnect()
             }
 
             override fun onClosed(reason: String) {
                 _isConnected.postValue(false)
                 _statusText.postValue("Disconnected: $reason")
+                scheduleReconnect()
             }
         })
         client = c
@@ -251,6 +319,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopSession() {
+        // User tapped disconnect himself -> never auto-reconnect afterwards.
+        manualStop = true
+        reconnectScheduled = false
+        sessionGen++
+        stopSessionInternal()
+        _statusText.postValue("Idle")
+    }
+
+    /** Tear down audio + socket without marking a manual stop. */
+    private fun stopSessionInternal() {
         try {
             audio?.stopCapture()
         } catch (_: Exception) {
@@ -265,7 +343,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         client = null
         _isConnected.postValue(false)
-        _statusText.postValue("Idle")
     }
 
     override fun onCleared() {
