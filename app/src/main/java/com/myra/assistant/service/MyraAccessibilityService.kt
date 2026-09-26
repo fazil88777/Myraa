@@ -5,8 +5,10 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -241,6 +243,83 @@ class MyraAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        maybeAnnounceIncomingCall(event)
+    }
+
+    // ---- Incoming-call announcer -------------------------------------------
+    // When the phone's dialer shows an incoming call, speak it aloud:
+    // "Boss, <name> ka call aa raha hai." Works even when no voice session
+    // is active, needs no new permissions (screen content is already visible
+    // to this service).
+
+    private var tts: TextToSpeech? = null
+    private var lastCallKey: String = ""
+    private var lastCallAt: Long = 0L
+
+    private fun maybeAnnounceIncomingCall(event: AccessibilityEvent?) {
+        if (event == null) return
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString()?.lowercase(Locale.US) ?: return
+        val isPhoneUi = pkg.contains("dialer") || pkg.contains("telecom")
+                || pkg == "com.android.phone"
+        if (!isPhoneUi) return
+        val root = rootInActiveWindow ?: return
+        val texts = mutableListOf<String>()
+        collectTexts(root, texts)
+        if (texts.isEmpty()) return
+        val blob = texts.joinToString(" ").lowercase(Locale.US)
+        val incoming = blob.contains("incoming call") || blob.contains("آنے والی کال")
+        if (!incoming) return
+        val name = guessCallerName(texts) ?: "unknown number"
+        val now = System.currentTimeMillis()
+        if (name == lastCallKey && now - lastCallAt < 90_000) return // debounce
+        lastCallKey = name
+        lastCallAt = now
+        announce("Boss, $name ka call aa raha hai.")
+    }
+
+    private fun collectTexts(node: AccessibilityNodeInfo?, out: MutableList<String>) {
+        if (node == null || out.size > 200) return
+        node.text?.toString()?.takeIf { it.isNotBlank() }?.let { out.add(it.trim()) }
+        node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { out.add(it.trim()) }
+        for (i in 0 until node.childCount) collectTexts(node.getChild(i), out)
+    }
+
+    private fun guessCallerName(texts: List<String>): String? {
+        val banned = setOf(
+            "incoming call", "answer", "decline", "message", "remind me",
+            "hold", "mute", "speaker", "keypad", "contacts", "recents",
+            "video", "voice", "block", "spam"
+        )
+        val cands = texts.map { it.trim() }
+            .filter { it.length >= 2 }
+            .filter { t -> banned.none { b -> t.equals(b, ignoreCase = true) } }
+        // Prefer a real name (has letters); fall back to the number itself.
+        return cands.filter { it.any { c -> c.isLetter() } }.maxByOrNull { it.length }
+            ?: cands.maxByOrNull { it.length }
+    }
+
+    private fun announce(msg: String) {
+        try {
+            val engine = tts
+            if (engine == null) {
+                tts = TextToSpeech(this) { status ->
+                    if (status == TextToSpeech.SUCCESS) {
+                        val e = tts ?: return@TextToSpeech
+                        val ur = e.setLanguage(Locale("ur", "PK"))
+                        if (ur == TextToSpeech.LANG_MISSING_DATA ||
+                            ur == TextToSpeech.LANG_NOT_SUPPORTED
+                        ) {
+                            e.setLanguage(Locale.getDefault())
+                        }
+                        e.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "myra-call")
+                    }
+                }
+            } else {
+                engine.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "myra-call")
+            }
+        } catch (_: Exception) {
+        }
     }
 
     override fun onInterrupt() {
@@ -248,6 +327,11 @@ class MyraAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
+        try {
+            tts?.shutdown()
+        } catch (_: Exception) {
+        }
+        tts = null
         super.onDestroy()
     }
 }
