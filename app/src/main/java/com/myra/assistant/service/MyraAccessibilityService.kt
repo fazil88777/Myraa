@@ -19,44 +19,23 @@ class MyraAccessibilityService : AccessibilityService() {
         @Volatile
         var instance: MyraAccessibilityService? = null
 
-        /**
-         * Tap something by its visible text OR by an icon button's description.
-         * Text matches are tried first; then every node on screen is checked for
-         * a content-description containing the query (this is how icon buttons
-         * like WhatsApp's "Send" paper-plane or the "Voice call" icon get tapped).
-         */
         fun clickOnText(text: String): Boolean {
             if (text.isBlank()) return false
             val root = instance?.rootInActiveWindow ?: return false
             return try {
-                // 1) visible text matches (existing behavior)
                 val nodes = root.findAccessibilityNodeInfosByText(text)
                 for (n in nodes) {
-                    if (clickNode(n)) return true
-                }
-                // 2) icon buttons: match content-description, e.g. "Send"
-                val q = text.lowercase()
-                val all = mutableListOf<AccessibilityNodeInfo>()
-                collectAll(root, all)
-                for (n in all) {
-                    val desc = n.contentDescription?.toString()?.lowercase() ?: continue
-                    if (desc.contains(q) && clickNode(n)) return true
+                    var node: AccessibilityNodeInfo? = n
+                    var guard = 0
+                    while (node != null && !node.isClickable && guard < 8) {
+                        node = node.parent
+                        guard++
+                    }
+                    if (node != null && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                        return true
+                    }
                 }
                 false
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        private fun clickNode(start: AccessibilityNodeInfo): Boolean {
-            return try {
-                var node: AccessibilityNodeInfo? = start
-                var guard = 0
-                while (node != null && !node.isClickable && guard < 8) {
-                    node = node.parent
-                    guard++
-                }
-                node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
             } catch (_: Exception) {
                 false
             }
@@ -80,33 +59,45 @@ class MyraAccessibilityService : AccessibilityService() {
             }
         }
 
+        fun scrollForward(): Boolean = scroll("down")
+
         /**
-         * Scroll the screen up or down. Tries EVERY scrollable node on the
-         * screen (deepest first) until one actually moves, so it no longer
-         * gives up on the first stubborn container.
+         * Scroll the screen. direction = "down" (default) or "up".
+         * Tries every scrollable node deepest-first, then falls back to a
+         * swipe gesture for screens with no scrollable node (games, webviews,
+         * custom views) where ACTION_SCROLL_* silently fails.
          */
         fun scroll(direction: String): Boolean {
             val root = instance?.rootInActiveWindow ?: return false
+            val forward = !direction.equals("up", ignoreCase = true)
+            val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
             return try {
-                val forward = !direction.equals("up", ignoreCase = true)
-                val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-                             else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-                val nodes = mutableListOf<AccessibilityNodeInfo>()
-                collectScrollable(root, nodes)
-                for (n in nodes.asReversed()) {
+                val scrollables = mutableListOf<AccessibilityNodeInfo>()
+                collectScrollables(root, scrollables) // deepest first
+                for (s in scrollables) {
                     try {
-                        if (n.performAction(action)) return true
+                        if (s.performAction(action)) return true
                     } catch (_: Exception) {
                     }
                 }
-                false
+                // No scrollable node worked: swipe on the screen itself.
+                if (forward) swipe(500, 700, 500, 300) else swipe(500, 300, 500, 700)
             } catch (_: Exception) {
                 false
             }
         }
 
-        /** Old wrapper, kept for safety. */
-        fun scrollForward(): Boolean = scroll("down")
+        private fun collectScrollables(
+            node: AccessibilityNodeInfo?,
+            out: MutableList<AccessibilityNodeInfo>
+        ) {
+            if (node == null) return
+            for (i in 0 until node.childCount) {
+                collectScrollables(node.getChild(i), out)
+            }
+            if (node.isScrollable) out.add(node)
+        }
 
         /** Press the system Back button. */
         fun pressBack(): Boolean {
@@ -196,75 +187,14 @@ class MyraAccessibilityService : AccessibilityService() {
             return null
         }
 
-        private fun collectScrollable(
-            node: AccessibilityNodeInfo?,
-            out: MutableList<AccessibilityNodeInfo>
-        ) {
-            if (node == null) return
-            if (node.isScrollable) out.add(node)
+        private fun findScrollable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+            if (node == null) return null
+            if (node.isScrollable) return node
             for (i in 0 until node.childCount) {
-                collectScrollable(node.getChild(i), out)
+                val r = findScrollable(node.getChild(i))
+                if (r != null) return r
             }
-        }
-
-        private fun collectAll(
-            node: AccessibilityNodeInfo?,
-            out: MutableList<AccessibilityNodeInfo>
-        ) {
-            if (node == null) return
-            out.add(node)
-            for (i in 0 until node.childCount) {
-                collectAll(node.getChild(i), out)
-            }
-        }
-
-        /**
-         * Dump every actionable element on screen with its EXACT coordinates.
-         * This is how MYRA "knows" precisely where each button, search bar and
-         * icon is — no more guessing coordinates from the video.
-         * Format per line: [i] "label" kind @(x,y)   (x,y are 0-1000)
-         */
-        fun getScreenElements(): String {
-            val svc = instance ?: return "ERROR: accessibility off"
-            val root = svc.rootInActiveWindow ?: return "ERROR: no screen"
-            return try {
-                val metrics = svc.resources.displayMetrics
-                val w = metrics.widthPixels.toFloat()
-                val h = metrics.heightPixels.toFloat()
-                val out = StringBuilder()
-                var count = 0
-                fun walk(n: AccessibilityNodeInfo?) {
-                    if (n == null || count >= 60) return
-                    val label = n.text?.toString()?.trim().orEmpty()
-                        .ifEmpty { n.contentDescription?.toString()?.trim().orEmpty() }
-                    val actionable =
-                        n.isClickable || n.isLongClickable || n.isEditable || n.isScrollable
-                    if (actionable && label.isNotEmpty()) {
-                        val r = android.graphics.Rect()
-                        n.getBoundsInScreen(r)
-                        val cx = ((r.centerX() / w) * 1000).toInt().coerceIn(0, 1000)
-                        val cy = ((r.centerY() / h) * 1000).toInt().coerceIn(0, 1000)
-                        val kind = when {
-                            n.isEditable -> "input"
-                            n.isScrollable -> "scroll"
-                            else -> "btn"
-                        }
-                        out.append("[").append(count).append("] \"")
-                            .append(label.take(40)).append("\" ")
-                            .append(kind)
-                            .append(" @(").append(cx).append(",").append(cy).append(")\n")
-                        count++
-                    }
-                    for (i in 0 until n.childCount) {
-                        if (count >= 60) break
-                        walk(n.getChild(i))
-                    }
-                }
-                walk(root)
-                if (count == 0) "EMPTY: no labeled elements on screen" else out.toString()
-            } catch (e: Exception) {
-                "ERROR: ${e.message}"
-            }
+            return null
         }
     }
 
