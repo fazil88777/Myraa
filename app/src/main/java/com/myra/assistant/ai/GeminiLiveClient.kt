@@ -192,6 +192,16 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "save_youtube_client_secret",
+                    "Save the YouTube OAuth client secret the user dictated (needed for YouTube login token exchange).",
+                    obj(
+                        "client_secret" to strProp("OAuth client secret for the Desktop client")
+                    ),
+                    listOf("client_secret")
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "youtube_login",
                     "Start YouTube login via device code. Returns a user_code the user must " +
                             "enter at google.com/device in Chrome. Speak ONLY the user_code to " +
@@ -477,8 +487,10 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "khud thumbnail dikhaye. " +
                                         "YOUTUBE-LOGIN: agar user kahe 'mera youtube client id XXX hai' to " +
                                         "save_youtube_client_id me bhejo (DESKTOP wali ID honi chahiye, " +
-                                        "MYRA-TV wali nahi). Jab kahe 'youtube login karo' to " +
-                                        "youtube_login call karo — ye Chrome me Google ka login page khol " +
+                                        "MYRA-TV wali nahi). Agar kahe 'mera youtube client secret XXX hai' to " +
+                                        "save_youtube_client_secret me bhejo. Jab kahe 'youtube login karo' to " +
+                                        "pehle dekho: agar client secret save nahi hua to user se kaho pehle " +
+                                        "'mera youtube client secret XXX hai' bole, phir youtube_login call karo — ye " +
                                         "dega. User se kaho: Chrome me khule page pe apna WOHI Gmail " +
                                         "chuno jis pe tumhara YouTube channel hai, Allow dabao. Allow " +
                                         "dabate hi login khud-ba-khud ho jayega — user ko kuch nahi " +

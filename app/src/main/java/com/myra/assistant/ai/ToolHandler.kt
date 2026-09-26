@@ -117,9 +117,21 @@ object ToolHandler {
                         "OK: YouTube login client ID save ho gaya. Ab 'youtube login karo' bolo."
                     }
                 }
+                "save_youtube_client_secret" -> {
+                    val secret = args.optString("client_secret").trim()
+                    if (secret.isBlank()) {
+                        "ERROR: client secret khali hai."
+                    } else {
+                        YouTubeStore.setOAuthClientSecret(context, secret)
+                        "OK: YouTube client secret save ho gaya. Ab 'youtube login karo' bolo."
+                    }
+                }
                 "youtube_login" -> {
                     if (YouTubeOAuth.isLinked(context)) {
                         "OK: YouTube login pehle se hua hua hai. Seedha 'full analyze batao' bolo."
+                    } else if (YouTubeStore.getOAuthClientSecret(context).isBlank()) {
+                        "ERROR: pehle client secret save karwao — user se kaho: 'mera youtube client secret XXX hai' bole. " +
+                                "Secret ke baghair Google token nahi dega."
                     } else {
                         val url = YouTubeOAuth.startLogin(context)
                         if (url == null) {

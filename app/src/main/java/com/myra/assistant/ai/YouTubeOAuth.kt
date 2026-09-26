@@ -99,6 +99,7 @@ object YouTubeOAuth {
                 "ERROR: login session nahi mili — 'youtube login karo' se dobara shuru karo."
         }
         val clientId = YouTubeStore.getOAuthClientId(context)
+        val clientSecret = YouTubeStore.getOAuthClientSecret(context)
         val v = verifier
         if (clientId.isBlank() || v.isNullOrBlank()) {
             stopServer()
@@ -106,14 +107,16 @@ object YouTubeOAuth {
         }
         return try {
             val redirect = "http://127.0.0.1:$port/"
-            val (httpCode, json) = postForm(
-                "https://oauth2.googleapis.com/token",
+            val fields = mutableListOf(
                 "client_id" to clientId,
                 "code" to code,
                 "code_verifier" to v,
                 "redirect_uri" to redirect,
                 "grant_type" to "authorization_code"
             )
+            // Desktop OAuth clients REQUIRE the client secret at the token endpoint.
+            if (clientSecret.isNotBlank()) fields.add("client_secret" to clientSecret)
+            val (httpCode, json) = postForm("https://oauth2.googleapis.com/token", *fields.toTypedArray())
             stopServer()
             if (httpCode == 200 && json != null) {
                 val access = json.optString("access_token")
@@ -145,13 +148,15 @@ object YouTubeOAuth {
         }
         val refresh = YouTubeStore.getRefreshToken(context)
         val clientId = YouTubeStore.getOAuthClientId(context)
+        val clientSecret = YouTubeStore.getOAuthClientSecret(context)
         if (refresh.isBlank() || clientId.isBlank()) return null
-        val (code, json) = postForm(
-            "https://oauth2.googleapis.com/token",
+        val fields = mutableListOf(
             "client_id" to clientId,
             "refresh_token" to refresh,
             "grant_type" to "refresh_token"
         )
+        if (clientSecret.isNotBlank()) fields.add("client_secret" to clientSecret)
+        val (code, json) = postForm("https://oauth2.googleapis.com/token", *fields.toTypedArray())
         if (code == 200 && json != null) {
             val access = json.optString("access_token")
             if (access.isNotBlank()) {

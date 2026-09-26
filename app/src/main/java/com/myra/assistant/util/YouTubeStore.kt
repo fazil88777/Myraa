@@ -43,6 +43,13 @@ object YouTubeStore {
         sp(context).edit().putString("yt_oauth_client_id", v.trim()).apply()
     }
 
+    fun getOAuthClientSecret(context: Context): String =
+        sp(context).getString("yt_oauth_client_secret", "") ?: ""
+
+    fun setOAuthClientSecret(context: Context, v: String) {
+        sp(context).edit().putString("yt_oauth_client_secret", v.trim()).apply()
+    }
+
     fun getAccessToken(context: Context): String =
         sp(context).getString("yt_access_token", "") ?: ""
 
