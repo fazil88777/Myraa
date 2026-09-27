@@ -48,7 +48,6 @@ class HomeFragment : Fragment() {
         val statusPill = view.findViewById<TextView>(R.id.homeStatusPill)
         vm.statusText.observe(viewLifecycleOwner) { statusPill.text = "● $it" }
         vm.isConnected.observe(viewLifecycleOwner) { orb.active = it == true }
-
         // ---- Quick actions ----
         view.findViewById<View>(R.id.qaAsk).setOnClickListener { act?.toggleVoiceSession() }
 
@@ -101,9 +100,23 @@ class HomeFragment : Fragment() {
             val keys = LiaStyle.PERSONALITIES.map { it.key }
             val next = keys[(keys.indexOf(Prefs.personality) + 1).coerceAtLeast(0) % keys.size]
             Prefs.personality = next
-            toast("Soul: ${LiaStyle.personalityLabel(next)} ✨ (naye session se lagega)")
+            if (act != null && act.isVoiceLive()) {
+                toast("Soul: ${LiaStyle.personalityLabel(next)} ✨ (session restart ho raha hai)")
+                act.restartVoiceSession()
+            } else {
+                toast("Soul: ${LiaStyle.personalityLabel(next)} ✨")
+            }
         }
         view.findViewById<View>(R.id.pillSettings).setOnClickListener { act?.selectTab("settings") }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-apply in case orb color / reduced-motion changed in Settings.
+        view?.findViewById<ParticleOrbView>(R.id.particleOrb)?.let { orb ->
+            orb.orbColor = LiaStyle.orbColor(Prefs.orbColor).color
+            orb.reducedMotion = Prefs.reducedMotion
+        }
     }
 
     private fun toast(s: String) =

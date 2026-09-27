@@ -128,12 +128,15 @@ class AudioEngine {
         }
     }
 
-    /** Drop pending playback and pause/flush the track. */
+    /** Drop pending playback and resume the track so later audio keeps playing. */
     fun stopPlayback() {
         try {
             playQueue.clear()
             track?.pause()
             track?.flush()
+            // MUST resume: a paused track blocks later writes forever, which would
+            // mute her for the rest of the session after any interruption.
+            track?.play()
         } catch (_: Exception) {
         }
     }

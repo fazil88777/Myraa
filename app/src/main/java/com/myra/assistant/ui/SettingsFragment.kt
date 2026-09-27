@@ -105,7 +105,7 @@ class SettingsFragment : Fragment() {
             ) { which ->
                 Prefs.personality = items[which].key
                 refreshAll()
-                toast("${items[which].label} — naye session se lagega ✨")
+                applyVoiceSettingNow("${items[which].label} select ho gayi")
             }
         }
         view.findViewById<View>(R.id.rowVoice).setOnClickListener {
@@ -117,7 +117,7 @@ class SettingsFragment : Fragment() {
             ) { which ->
                 Prefs.voiceName = items[which].key
                 refreshAll()
-                toast("${items[which].label} — naye session se lagegi 🎙")
+                applyVoiceSettingNow("${items[which].label} select ho gayi")
             }
         }
         view.findViewById<View>(R.id.rowLanguage).setOnClickListener {
@@ -140,7 +140,7 @@ class SettingsFragment : Fragment() {
             ) { which ->
                 Prefs.speechSpeed = items[which]
                 refreshAll()
-                toast("${LiaStyle.speedLabel(items[which])} — naye session se")
+                applyVoiceSettingNow("Speed ${LiaStyle.speedLabel(items[which])} select ho gayi")
             }
         }
 
@@ -407,4 +407,18 @@ class SettingsFragment : Fragment() {
 
     private fun toast(s: String) =
         Toast.makeText(requireContext(), s, Toast.LENGTH_SHORT).show()
+
+    /**
+     * After a personality/voice/speed change: if a voice session is live, restart it
+     * so the new setting applies at once; otherwise it applies on the next session.
+     */
+    private fun applyVoiceSettingNow(msg: String) {
+        val act = activity as? MainActivity
+        if (act != null && act.isVoiceLive()) {
+            toast("$msg — session restart ho raha hai ✨")
+            act.restartVoiceSession()
+        } else {
+            toast("$msg ✨")
+        }
+    }
 }

@@ -69,8 +69,8 @@ class ParticleOrbView @JvmOverloads constructor(
         override fun run() {
             if (!running) return
             if (!reducedMotion) {
-                ringAngle = (ringAngle + 2.2f) % 360f
-                ringAngle2 = (ringAngle2 - 1.4f) % 360f
+                ringAngle = (ringAngle + 3.2f) % 360f
+                ringAngle2 = (ringAngle2 - 2.0f) % 360f
                 pulse += if (active) 0.16f else 0.07f
                 updateParticles()
                 invalidate()

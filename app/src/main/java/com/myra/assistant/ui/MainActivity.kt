@@ -251,6 +251,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    fun isVoiceLive(): Boolean = viewModel.isConnected.value == true
+
+    /** Restart the live session so a changed personality/voice/speed takes effect at once. */
+    fun restartVoiceSession() {
+        try {
+            viewModel.stopSession()
+            findViewById<View>(R.id.fragmentContainer).postDelayed({ ensureSession() }, 900)
+        } catch (_: Exception) {
+        }
+    }
+
     /** Called by HomeFragment's Screen Share quick action. */
     fun toggleScreenShare() {        if (viewModel.isSharing.value == true) {
             stopService(Intent(this, ScreenShareService::class.java))
