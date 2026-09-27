@@ -22,13 +22,15 @@ import com.myra.assistant.R
 import com.myra.assistant.service.HotwordService
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.HotwordStore
+import com.myra.assistant.util.LiaStyle
+import com.myra.assistant.util.MyraBridge
 import com.myra.assistant.util.PermissionHelper
 import com.myra.assistant.util.Prefs
 import java.util.Calendar
 
 /**
- * Host: header (MYRA + greeting + gear), tab container,
- * bottom navigation (Home / History / Settings / Features).
+ * LIA-style host: grid background, header (sync | title | mic),
+ * tab container, bottom navigation (Home / Chat / Voice / History / Settings).
  * All voice/session logic lives in the shared MainViewModel.
  */
 class MainActivity : AppCompatActivity() {
@@ -72,14 +74,35 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
-        findViewById<TextView>(R.id.greetingText).text = greeting()
-        findViewById<View>(R.id.settingsGearButton).setOnClickListener {
-            selectTab("settings")
+        MyraBridge.viewModel = viewModel
+
+        // Theme: grid tint
+        findViewById<GridBackgroundView>(R.id.gridBg).gridColor =
+            LiaStyle.theme(Prefs.theme).gridColor
+
+        findViewById<TextView>(R.id.appNameText).text = Prefs.assistantName.ifBlank { "MYRA" }
+        findViewById<TextView>(R.id.appSubtitleText).text = greeting()
+
+        findViewById<View>(R.id.syncButton).setOnClickListener {
+            findViewById<TextView>(R.id.appSubtitleText).text = greeting()
+            toast("Synced ✓")
         }
+        findViewById<View>(R.id.micButton).setOnClickListener {
+            if (viewModel.isConnected.value == true) {
+                viewModel.stopSession()
+            } else {
+                ensureSession()
+            }
+        }
+
         findViewById<View>(R.id.navHome).setOnClickListener { selectTab("home") }
+        findViewById<View>(R.id.navChat).setOnClickListener { selectTab("chat") }
+        findViewById<View>(R.id.navVoice).setOnClickListener {
+            ensureSession()
+            selectTab("home")
+        }
         findViewById<View>(R.id.navHistory).setOnClickListener { selectTab("history") }
         findViewById<View>(R.id.navSettings).setOnClickListener { selectTab("settings") }
-        findViewById<View>(R.id.navFeatures).setOnClickListener { selectTab("features") }
 
         if (savedInstanceState == null) selectTab("home")
 
@@ -97,11 +120,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         // ---- "hi MYRA" hotword wiring ----
-        // Keep the background listener quiet while the voice session is live.
         viewModel.isConnected.observe(this) { connected ->
             HotwordService.sessionActive = connected == true
         }
-        // The Siri-style circle needs "Display over other apps" — ask once, only if hotword is on.
         if (HotwordStore.isEnabled(this) &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             !Settings.canDrawOverlays(this)
@@ -117,7 +138,6 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) {
             }
         }
-        // Resume background hotword listening (after reboot / app update).
         if (HotwordStore.isEnabled(this)) {
             try {
                 ContextCompat.startForegroundService(
@@ -128,9 +148,18 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) {
             }
         }
+
+        // Auto Listening: app khulte hi sunna shuru
+        if (Prefs.autoListening && Prefs.apiKey.isNotBlank()) {
+            findViewById<View>(R.id.fragmentContainer).postDelayed({
+                if (viewModel.isConnected.value != true) {
+                    viewModel.startSession(Prefs.apiKey)
+                }
+            }, 1500)
+        }
+
         handleAutoConnect(intent)
 
-        // If the app crashed last time, show the reason
         val lastCrash = Prefs.lastCrash
         if (lastCrash.isNotEmpty()) {
             Prefs.lastCrash = ""
@@ -155,11 +184,19 @@ class MainActivity : AppCompatActivity() {
     private fun handleAutoConnect(intent: Intent?) {
         if (intent?.getBooleanExtra("auto_connect", false) != true) return
         intent.removeExtra("auto_connect")
-        if (Prefs.apiKey.isBlank()) {
-            toast("API key nahi hai — pehle Settings mein API key dalo")
-            return
+        ensureSession()
+    }
+
+    /** Start a voice session if the API key is saved, else guide to Settings. */
+    private fun ensureSession() {
+        if (viewModel.isConnected.value == true) return
+        val k = Prefs.apiKey
+        if (k.isBlank()) {
+            toast("Pehle Settings mein API key save karo")
+            selectTab("settings")
+        } else {
+            viewModel.startSession(k)
         }
-        viewModel.startSession(Prefs.apiKey) // idempotent: already connected ho to kuch nahi hota
     }
 
     private fun greeting(): String {
@@ -171,11 +208,12 @@ class MainActivity : AppCompatActivity() {
             else -> "Good night"
         }
         val name = Prefs.userName.trim()
-        return if (name.isNotBlank()) "$g, $name boss" else "$g, boss"
+        return if (name.isNotBlank()) "$g, $name" else "$g, dost"
     }
 
     fun selectTab(tab: String) {
         val frag: Fragment = when (tab) {
+            "chat" -> ChatFragment()
             "history" -> HistoryFragment()
             "settings" -> SettingsFragment()
             "features" -> FeaturesFragment()
@@ -188,13 +226,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun paintNav(tab: String) {
-        val active = 0xFFFF5252.toInt() // MYRA red
-        val idle = 0xFF6A6A8A.toInt()
+        val active = LiaStyle.theme(Prefs.theme).accent
+        val idle = 0xFF6A7B8A.toInt()
         val ids = mapOf(
             "home" to Pair(R.id.navHomeIcon, R.id.navHomeLabel),
+            "chat" to Pair(R.id.navChatIcon, R.id.navChatLabel),
+            "voice" to Pair(R.id.navVoiceIcon, R.id.navVoiceLabel),
             "history" to Pair(R.id.navHistoryIcon, R.id.navHistoryLabel),
-            "settings" to Pair(R.id.navSettingsIcon, R.id.navSettingsLabel),
-            "features" to Pair(R.id.navFeaturesIcon, R.id.navFeaturesLabel)
+            "settings" to Pair(R.id.navSettingsIcon, R.id.navSettingsLabel)
         )
         ids.forEach { (key, pair) ->
             val color = if (key == tab) active else idle
@@ -203,9 +242,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Called by HomeFragment's Screen Share button. */
-    fun toggleScreenShare() {
-        if (viewModel.isSharing.value == true) {
+    /** Start the voice session, or stop it if already live. Called by fragments. */
+    fun toggleVoiceSession() {
+        if (viewModel.isConnected.value == true) {
+            viewModel.stopSession()
+        } else {
+            ensureSession()
+        }
+    }
+
+    /** Called by HomeFragment's Screen Share quick action. */
+    fun toggleScreenShare() {        if (viewModel.isSharing.value == true) {
             stopService(Intent(this, ScreenShareService::class.java))
             viewModel.setSharing(false)
             toast("Screen share OFF")

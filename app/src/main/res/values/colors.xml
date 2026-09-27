@@ -6,4 +6,15 @@
     <color name="teal_700">#018786</color>
     <color name="black">#000000</color>
     <color name="white">#FFFFFF</color>
+
+    <!-- LIA-style palette -->
+    <color name="lia_bg">#05080D</color>
+    <color name="lia_grid">#0E222C</color>
+    <color name="lia_card">#0C141C</color>
+    <color name="lia_card_border">#16303B</color>
+    <color name="lia_accent">#2DD4A8</color>
+    <color name="lia_accent_dark">#0B3B2E</color>
+    <color name="lia_text">#FFFFFF</color>
+    <color name="lia_muted">#8A9BA8</color>
+    <color name="lia_pill">#101B24</color>
 </resources>

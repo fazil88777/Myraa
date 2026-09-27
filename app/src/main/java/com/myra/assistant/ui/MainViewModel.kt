@@ -324,6 +324,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isSharing.postValue(sharing)
     }
 
+    fun clearMessages() {
+        _messages.value = emptyList()
+    }
+
     fun stopSession() {
         // User tapped disconnect himself -> never auto-reconnect afterwards.
         manualStop = true

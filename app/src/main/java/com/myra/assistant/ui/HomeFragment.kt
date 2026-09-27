@@ -1,59 +1,28 @@
 package com.myra.assistant.ui
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.location.Geocoder
-import android.location.LocationManager
+import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
-import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.imageview.ShapeableImageView
 import com.myra.assistant.R
+import com.myra.assistant.service.HotwordService
+import com.myra.assistant.util.HotwordStore
+import com.myra.assistant.util.LiaStyle
 import com.myra.assistant.util.Prefs
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import kotlin.random.Random
 
 /**
- * Home tab: MYRA's face = connect/disconnect, waveform, status,
- * screen share, location, conversation and message input.
+ * LIA-style home tab: left pill menu, VIP particle orb (tap = talk),
+ * status pill, quick actions grid.
  */
 class HomeFragment : Fragment() {
 
     private lateinit var vm: MainViewModel
-    private lateinit var adapter: ChatAdapter
-
-    // Location permission is asked at most ONCE per view lifetime.
-    // (Re-asking on every denial caused an infinite request loop
-    //  and a StackOverflowError crash.)
-    private var locationPermissionRequested = false
-
-    private val waveLoop = Handler(Looper.getMainLooper())
-    private var waveRunning = false
-    private val waveTick = object : Runnable {
-        override fun run() {
-            if (!waveRunning) return
-            val v = view?.findViewById<WaveformView>(R.id.waveformView)
-            if (v != null) {
-                val connected = vm.isConnected.value == true
-                v.pushAmplitude(if (connected) 0.25f + Random.nextFloat() * 0.65f else 0.06f)
-            }
-            waveLoop.postDelayed(this, 140)
-        }
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -66,164 +35,77 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         vm = ViewModelProvider(requireActivity())[MainViewModel::class.java]
-        adapter = ChatAdapter()
+        val act = activity as? MainActivity
 
-        val recycler = view.findViewById<RecyclerView>(R.id.homeChatRecycler)
-        recycler.layoutManager = LinearLayoutManager(requireContext()).apply { stackFromEnd = true }
-        recycler.adapter = adapter
+        val orb = view.findViewById<ParticleOrbView>(R.id.particleOrb)
+        orb.orbColor = LiaStyle.orbColor(Prefs.orbColor).color
+        orb.reducedMotion = Prefs.reducedMotion
+        orb.setOnClickListener { act?.toggleVoiceSession() }
 
-        val faceBtn = view.findViewById<ShapeableImageView>(R.id.powerFaceButton)
+        view.findViewById<TextView>(R.id.homeTitleText).text =
+            "${Prefs.assistantName.ifBlank { "MYRA" }} VOICE ASSISTANT"
+
         val statusPill = view.findViewById<TextView>(R.id.homeStatusPill)
-        val shareBtn = view.findViewById<Button>(R.id.homeScreenShareButton)
-        val msgInput = view.findViewById<EditText>(R.id.homeMessageInput)
-        val sendBtn = view.findViewById<Button>(R.id.homeSendButton)
+        vm.statusText.observe(viewLifecycleOwner) { statusPill.text = "● $it" }
+        vm.isConnected.observe(viewLifecycleOwner) { orb.active = it == true }
 
-        // Aura orb: design from Settings (crimson / azure / violet)
-        val orbRes = when (Prefs.orbDesign) {
-            "azure" -> R.drawable.orb_azure
-            "violet" -> R.drawable.orb_violet
-            else -> R.drawable.orb_crimson
+        // ---- Quick actions ----
+        view.findViewById<View>(R.id.qaAsk).setOnClickListener { act?.toggleVoiceSession() }
+
+        view.findViewById<View>(R.id.qaShare).setOnClickListener { act?.toggleScreenShare() }
+
+        view.findViewById<View>(R.id.qaReminder).setOnClickListener {
+            toast("MYRA se kaho: 'Mujad ko subah 9 baje ye bhej dena' ⏰")
         }
-        faceBtn.setImageResource(orbRes)
 
-        // Orb keeps rotating slowly (live animation)
-        val orbSpin = android.animation.ObjectAnimator.ofFloat(faceBtn, "rotation", 0f, 360f).apply {
-            duration = 24000L
-            repeatCount = android.animation.ObjectAnimator.INFINITE
-            interpolator = android.view.animation.LinearInterpolator()
+        val hwSub = view.findViewById<TextView>(R.id.qaHotwordSub)
+        fun refreshHw() {
+            val on = HotwordStore.isEnabled(requireContext())
+            hwSub.text = if (on) "hi ${Prefs.assistantName.ifBlank { "MYRA" }}: ON" else "hi MYRA: OFF"
         }
-        orbSpin.start()
-
-        // Home wallpaper from Settings (midnight / crimson / azure)
-        val homeRoot = view.findViewById<android.widget.LinearLayout>(R.id.homeRoot)
-        val wpRes = when (Prefs.wallpaper) {
-            "crimson" -> R.drawable.wallpaper_crimson
-            "azure" -> R.drawable.wallpaper_midnight
-            else -> R.drawable.bg_app
-        }
-        homeRoot.background = ContextCompat.getDrawable(requireContext(), wpRes)
-
-        // Tap MYRA's face = Connect / Disconnect
-        faceBtn.setOnClickListener {
-            if (vm.isConnected.value == true) {
-                vm.stopSession()
-            } else {
-                val k = Prefs.apiKey
-                if (k.isBlank()) {
-                    Toast.makeText(
-                        requireContext(),
-                        "Pehle Settings mein API key save karo",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    (activity as? MainActivity)?.selectTab("settings")
+        refreshHw()
+        view.findViewById<View>(R.id.qaHotword).setOnClickListener {
+            val ctx = requireContext()
+            val nowOn = !HotwordStore.isEnabled(ctx)
+            HotwordStore.setEnabled(ctx, nowOn)
+            try {
+                val i = Intent(ctx, HotwordService::class.java)
+                if (nowOn) {
+                    i.action = HotwordService.ACTION_START
+                    ContextCompat.startForegroundService(ctx, i)
                 } else {
-                    vm.startSession(k)
+                    i.action = HotwordService.ACTION_STOP
+                    ContextCompat.startForegroundService(ctx, i)
                 }
+            } catch (_: Exception) {
             }
+            refreshHw()
+            toast(if (nowOn) "Hotword ON — 'hi MYRA' bolo 👂" else "Hotword OFF")
         }
 
-        shareBtn.setOnClickListener {
-            (activity as? MainActivity)?.toggleScreenShare()
+        view.findViewById<View>(R.id.qaYoutube).setOnClickListener {
+            toast("Voice par kaho: 'full analyze batao' ▶")
         }
 
-        sendBtn.setOnClickListener {
-            val msg = msgInput.text.toString()
-            if (msg.isNotBlank()) {
-                vm.sendTypedText(msg)
-                msgInput.text.clear()
-            }
+        view.findViewById<View>(R.id.qaMore).setOnClickListener { act?.selectTab("features") }
+
+        // ---- Left pill menu ----
+        view.findViewById<View>(R.id.pillMemory).setOnClickListener {
+            val mem = if (Prefs.memoryEnabled) "ON" else "OFF"
+            val name = Prefs.userName.ifBlank { "dost" }
+            toast("Memory $mem 🧠 — tum: $name, style: ${LiaStyle.personalityLabel(Prefs.personality)}")
         }
-
-        vm.statusText.observe(viewLifecycleOwner) {
-            statusPill.text = "● $it"
+        view.findViewById<View>(R.id.pillChat).setOnClickListener { act?.selectTab("chat") }
+        view.findViewById<View>(R.id.pillSoul).setOnClickListener {
+            // Cycle personality
+            val keys = LiaStyle.PERSONALITIES.map { it.key }
+            val next = keys[(keys.indexOf(Prefs.personality) + 1).coerceAtLeast(0) % keys.size]
+            Prefs.personality = next
+            toast("Soul: ${LiaStyle.personalityLabel(next)} ✨ (naye session se lagega)")
         }
-
-        vm.messages.observe(viewLifecycleOwner) {
-            adapter.submit(it)
-            if (adapter.itemCount > 0) {
-                recycler.scrollToPosition(adapter.itemCount - 1)
-            }
-        }
-
-        vm.isSharing.observe(viewLifecycleOwner) { sharing ->
-            shareBtn.text = if (sharing) "Screen Share: ON" else "Screen Share: OFF"
-        }
-
-        updateLocation(view)
-
-        waveRunning = true
-        waveLoop.post(waveTick)
+        view.findViewById<View>(R.id.pillSettings).setOnClickListener { act?.selectTab("settings") }
     }
 
-    override fun onDestroyView() {
-        waveRunning = false
-        waveLoop.removeCallbacks(waveTick)
-        locationPermissionRequested = false
-        super.onDestroyView()
-    }
-
-    // ---- Location (MAX style) ----
-
-    private fun updateLocation(view: View) {
-        val act = activity ?: return
-        val tv = view.findViewById<TextView>(R.id.locationText) ?: return
-        val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
-        if (ContextCompat.checkSelfPermission(
-                act,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            // Ask only once: if the user denies, just show the time label
-            // instead of asking again (which crashed the app in a loop).
-            if (!locationPermissionRequested) {
-                locationPermissionRequested = true
-                requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), 3001)
-            }
-            tv.text = "GPS • $time"
-            return
-        }
-        try {
-            val lm = act.getSystemService(android.content.Context.LOCATION_SERVICE) as LocationManager
-            val loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-            if (loc == null) {
-                tv.text = "GPS • $time"
-                return
-            }
-            Thread {
-                try {
-                    val g = Geocoder(act, Locale.getDefault())
-                    @Suppress("DEPRECATION")
-                    val list = g.getFromLocation(loc.latitude, loc.longitude, 1)
-                    val first = list?.firstOrNull()
-                    val label = listOf(
-                        first?.locality ?: first?.subAdminArea ?: "",
-                        first?.countryName ?: ""
-                    ).filter { it.isNotBlank() }.joinToString(", ")
-                    act.runOnUiThread {
-                        tv.text = if (label.isBlank()) "GPS • $time" else "$label\nGPS • $time"
-                    }
-                } catch (_: Exception) {
-                    act.runOnUiThread { tv.text = "GPS • $time" }
-                }
-            }.start()
-        } catch (_: Exception) {
-            tv.text = "GPS • $time"
-        }
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        if (requestCode == 3001 && view != null) {
-            // Refresh the location label ONLY when the user granted it.
-            // On denial do nothing — never auto-ask again.
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                updateLocation(requireView())
-            }
-        }
-    }
+    private fun toast(s: String) =
+        Toast.makeText(requireContext(), s, Toast.LENGTH_LONG).show()
 }
