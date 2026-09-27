@@ -441,6 +441,18 @@ class GeminiLiveClient(private val listener: Listener) {
                 )
                 .put("inputAudioTranscription", JSONObject())
                 .put(
+                    "realtimeInputConfig",
+                    JSONObject().put(
+                        "automaticActivityDetection",
+                        JSONObject()
+                            .put("disabled", false)
+                            .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")
+                            .put("endOfSpeechSensitivity", "END_SENSITIVITY_HIGH")
+                            .put("prefixPaddingMs", 20)
+                            .put("silenceDurationMs", 300)
+                    )
+                )
+                .put(
                     "systemInstruction",
                     JSONObject().put(
                         "parts",
