@@ -12,11 +12,12 @@ import android.util.AttributeSet
 import android.view.View
 import kotlin.math.cos
 import kotlin.math.sin
-import kotlin.random.Random
+import kotlin.math.sqrt
 
 /**
- * LIA-style VIP orb: a glowing core with rotating dashed rings,
- * and small particles that continuously rush inward and touch the core.
+ * LIA-style dotted particle sphere: hundreds of glowing dots arranged on a
+ * globe (Fibonacci lattice), slowly rotating in 3D with a soft halo.
+ * Tap = talk is handled by the click listener set in HomeFragment.
  */
 class ParticleOrbView @JvmOverloads constructor(
     context: Context,
@@ -27,41 +28,28 @@ class ParticleOrbView @JvmOverloads constructor(
     var orbColor: Int = Color.parseColor("#2DD4A8")
         set(value) {
             field = value
-            corePaint.color = value
             invalidate()
         }
 
     /** When true, draws one static frame (no animation). */
     var reducedMotion: Boolean = false
 
-    /** When true (voice session live), the orb pulses faster and brighter. */
+    /** When true (voice session live), the sphere spins faster and glows brighter. */
     var active: Boolean = false
         set(value) {
             field = value
             invalidate()
         }
 
-    private data class Particle(
-        var angle: Float,
-        var radius: Float,
-        var speed: Float,
-        var tangential: Float,
-        var size: Float
-    )
+    /** Unit-sphere point: x, y, z each in [-1, 1]. */
+    private data class Dot(val x: Float, val y: Float, val z: Float)
 
-    private val particles = mutableListOf<Particle>()
-    private var ringAngle = 0f
-    private var ringAngle2 = 0f
+    private val dots = mutableListOf<Dot>()
+    private var angleY = 0f
     private var pulse = 0f
 
-    private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = orbColor }
-    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = orbColor
-        style = Paint.Style.STROKE
-        strokeWidth = 7f
-        alpha = 200
-    }
-    private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private val loop = Handler(Looper.getMainLooper())
     private var running = false
@@ -69,13 +57,34 @@ class ParticleOrbView @JvmOverloads constructor(
         override fun run() {
             if (!running) return
             if (!reducedMotion) {
-                ringAngle = (ringAngle + 3.2f) % 360f
-                ringAngle2 = (ringAngle2 - 2.0f) % 360f
-                pulse += if (active) 0.16f else 0.07f
-                updateParticles()
+                angleY = (angleY + if (active) 2.6f else 1.1f) % 360f
+                pulse += if (active) 0.14f else 0.06f
                 invalidate()
             }
             loop.postDelayed(this, 33)
+        }
+    }
+
+    init {
+        seedDots()
+    }
+
+    /** Evenly spread dots over a sphere using a Fibonacci lattice. */
+    private fun seedDots() {
+        dots.clear()
+        val n = 420
+        val golden = Math.PI * (3.0 - sqrt(5.0))
+        for (i in 0 until n) {
+            val y = 1.0 - (i.toDouble() / (n - 1)) * 2.0
+            val r = sqrt((1.0 - y * y).coerceAtLeast(0.0))
+            val theta = golden * i
+            dots.add(
+                Dot(
+                    (cos(theta) * r).toFloat(),
+                    y.toFloat(),
+                    (sin(theta) * r).toFloat()
+                )
+            )
         }
     }
 
@@ -91,107 +100,53 @@ class ParticleOrbView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        seedParticles()
-    }
-
-    private fun baseR(): Float = (minOf(width, height) / 2f) * 0.40f
-
-    private fun seedParticles() {
-        particles.clear()
-        val r = baseR()
-        if (r <= 0f) return
-        val count = 46
-        repeat(count) {
-            particles.add(
-                Particle(
-                    angle = Random.nextFloat() * 360f,
-                    radius = r * (1.5f + Random.nextFloat() * 0.9f),
-                    speed = r * (0.012f + Random.nextFloat() * 0.022f),
-                    tangential = (Random.nextFloat() - 0.5f) * 3.2f,
-                    size = 3f + Random.nextFloat() * 5f
-                )
-            )
-        }
-    }
-
-    private fun updateParticles() {
-        val r = baseR()
-        if (r <= 0f) return
-        for (p in particles) {
-            p.radius -= p.speed * (if (active) 1.6f else 1f)
-            p.angle = (p.angle + p.tangential) % 360f
-            if (p.radius < r * 0.95f) {
-                // Reached the core: respawn at the outer edge.
-                p.radius = r * (1.7f + Random.nextFloat() * 0.7f)
-                p.angle = Random.nextFloat() * 360f
-                p.speed = r * (0.012f + Random.nextFloat() * 0.022f)
-            }
-        }
-    }
-
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val cx = width / 2f
         val cy = height / 2f
-        val r = baseR()
+        val r = minOf(width, height) / 2f * 0.62f
         if (r <= 0f) return
 
-        val pulseScale = 1f + 0.07f * sin(pulse)
+        val pulseScale = 1f + 0.04f * sin(pulse)
 
-        // Outer halo
-        val haloR = r * 2.1f
-        particlePaint.shader = RadialGradient(
-            cx, cy, haloR,
-            intArrayOf(colorWithAlpha(orbColor, 46), Color.TRANSPARENT),
+        // Soft halo behind the sphere
+        val glowR = r * 1.9f
+        glowPaint.shader = RadialGradient(
+            cx, cy, glowR,
+            intArrayOf(colorWithAlpha(orbColor, if (active) 70 else 46), Color.TRANSPARENT),
             floatArrayOf(0f, 1f),
             Shader.TileMode.CLAMP
         )
-        canvas.drawCircle(cx, cy, haloR, particlePaint)
-        particlePaint.shader = null
+        canvas.drawCircle(cx, cy, glowR, glowPaint)
+        glowPaint.shader = null
 
-        // Glowing core
-        val coreR = r * pulseScale
-        corePaint.shader = RadialGradient(
-            cx, cy, coreR,
-            intArrayOf(Color.WHITE, orbColor, colorWithAlpha(orbColor, 60)),
-            floatArrayOf(0f, 0.45f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawCircle(cx, cy, coreR, corePaint)
-        corePaint.shader = null
+        val radY = Math.toRadians(angleY.toDouble())
+        val cosY = cos(radY).toFloat()
+        val sinY = sin(radY).toFloat()
+        // Slight X tilt so the spin reads as 3D.
+        val tilt = 0.42f
+        val cosT = cos(tilt)
+        val sinT = sin(tilt)
 
-        // Rotating dashed rings
-        ringPaint.color = orbColor
-        val ringR = r * 1.28f
-        canvas.save()
-        canvas.rotate(ringAngle, cx, cy)
-        canvas.drawArc(cx - ringR, cy - ringR, cx + ringR, cy + ringR, 0f, 80f, false, ringPaint)
-        canvas.drawArc(cx - ringR, cy - ringR, cx + ringR, cy + ringR, 180f, 55f, false, ringPaint)
-        canvas.restore()
-        canvas.save()
-        canvas.rotate(ringAngle2, cx, cy)
-        ringPaint.alpha = 120
-        val ringR2 = r * 1.52f
-        canvas.drawArc(cx - ringR2, cy - ringR2, cx + ringR2, cy + ringR2, 40f, 120f, false, ringPaint)
-        ringPaint.alpha = 200
-        canvas.restore()
-
-        // Particles rushing into the core
-        for (p in particles) {
-            val rad = Math.toRadians(p.angle.toDouble())
-            val x = cx + cos(rad).toFloat() * p.radius
-            val y = cy + sin(rad).toFloat() * p.radius
-            // Fade + shrink as they near the core, brighten just before touching it.
-            val t = ((p.radius - r * 0.95f) / (r * 1.5f)).coerceIn(0f, 1f)
-            val alpha = (90 + 165 * (1f - t)).toInt().coerceIn(0, 255)
-            val size = p.size * (0.5f + 0.5f * t)
-            particlePaint.color = orbColor
-            particlePaint.alpha = alpha
-            canvas.drawCircle(x, y, size, particlePaint)
+        // Painter's order: back dots first, front dots last.
+        val ordered = dots.sortedBy { d ->
+            -d.x * sinY + d.z * cosY
         }
-        particlePaint.alpha = 255
+        for (d in ordered) {
+            // Rotate around Y, then tilt around X.
+            val x1 = d.x * cosY + d.z * sinY
+            val z1 = -d.x * sinY + d.z * cosY
+            val y1 = d.y * cosT - z1 * sinT
+            val z2 = d.y * sinT + z1 * cosT
+            val depth = ((z2 + 1f) / 2f).coerceIn(0f, 1f) // 0 = back, 1 = front
+            val px = cx + x1 * r * pulseScale
+            val py = cy + y1 * r * pulseScale
+            val size = (1.6f + 4.2f * depth) * pulseScale
+            dotPaint.color = orbColor
+            dotPaint.alpha = (60 + 195 * depth).toInt().coerceIn(0, 255)
+            canvas.drawCircle(px, py, size, dotPaint)
+        }
+        dotPaint.alpha = 255
     }
 
     private fun colorWithAlpha(color: Int, alpha: Int): Int {
