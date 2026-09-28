@@ -421,6 +421,24 @@ class GeminiLiveClient(private val listener: Listener) {
                     listOf("name")
                 )
             )
+            fdArray.put(
+                functionDecl(
+                    "flow_video",
+                    "Start a Google Flow AI video project: opens Flow (labs.google/flow) in Chrome " +
+                            "and begins a guided video build. Use when the user says 'flow mein video " +
+                            "banao', 'X minute ki video banao' ya 'storyboard se video banao'. After " +
+                            "calling it, write the MASTER PLAN (character bible + full dumdaar script + " +
+                            "one 8-second Veo prompt per scene), save it with save_script, then build " +
+                            "scene-by-scene in Flow's storyboard: paste each scene prompt, generate, " +
+                            "regenerate any bad clip (max 2 retries), and download at the end.",
+                    obj(
+                        "idea" to strProp("Video ka idea, jaise 'saas bahu ka jhagra kitchen me'"),
+                        "minutes" to strProp("Kitne minute ki video, jaise '2' ya '1.5'"),
+                        "mode" to strProp("'storyboard' agar user ne storyboard kaha ho, warna 'fast'")
+                    ),
+                    listOf("idea", "minutes")
+                )
+            )
 
             val setup = JSONObject()
                 .put("model", MODEL)
@@ -478,7 +496,7 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "You can control his phone with tools: open_app, search_youtube, make_call, " +
                                         "send_sms, tap_text, tap_at, swipe, press_back, input_text, scroll_screen, " +
                                         "get_current_time, can_see_screen, get_screen_elements, schedule_message, " +
-                                        "cancel_scheduled_message, list_scheduled_messages. " +
+                                        "cancel_scheduled_message, list_scheduled_messages, flow_video. " +
                                         "HOTWORD: you have a background 'hi MYRA' listener. If the user says " +
                                         "'hotword on karo', call set_hotword with enabled=true and confirm " +
                                         "'Ho gaya Fazil! Hotword on hai — ab jab bhi kaho ge hi MYRA, " +
@@ -526,6 +544,31 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "get_weather for live mausam of any city; " +
                                         "save_script to write scripts or long texts into a file in " +
                                         "Downloads/MYRA. " +
+                                        "FLOW VIDEO STUDIO (Google Flow + Veo): jab user kahe 'flow mein video " +
+                                        "banao' / 'X minute ki video banao' / 'storyboard se video banao', to flow_video " +
+                                        "call karo (idea + minutes + mode). Uske baad MASTER PLAN banao aur sunao: " +
+                                        "1) CHARACTER BIBLE — har character ka naam, umar, chehra, kapde (poori video " +
+                                        "mein SAME rahenge), bolne ka andaz. Max 3-4 characters. " +
+                                        "2) DUMDAAR SCRIPT — pehle 8 second me strong hook, dialogue-driven scenes " +
+                                        "(Veo 3.1 me native dialogue/lip-sync hota hai — dialogues usi zuban me likho " +
+                                        "jo user chahe, quotes me), har ~30 second me cliffhanger. " +
+                                        "3) SCENE PROMPTS — har 8-second clip ke liye EK alag Veo prompt is formula se: " +
+                                        "[cinematic style] + [POORI character bible repeat karo] + [sirf EK action] + " +
+                                        "[dialogue quotes me] + [camera move: slow dolly-in / tracking / static] + " +
+                                        "[lighting/mood]. Har scene me sirf ek action — zyada cheezen ek prompt me mat " +
+                                        "daalo warna Flow ghalat video banayega. Negative: no text overlays, no extra " +
+                                        "fingers, no morphing faces, no changing clothes. " +
+                                        "Poora plan save_script se Downloads/MYRA me save karo. Phir Flow ke storyboard " +
+                                        "me scene 1 se shuru karo: get_screen_elements se prompt box dhoondo, tap karke " +
+                                        "input_text se scene prompt paste karo, generate dabao. Har clip ke baad user se " +
+                                        "poocho 'clip theek bani Fazil?' — agar ghalat bane (character badal gaya, action " +
+                                        "ghalat) to prompt simple karke dobara generate karo (max 2 retry per scene). " +
+                                        "Sab scenes ke baad download ke steps tap karke video save karwao. User ke paas " +
+                                        "Flow Pro plan hai. " +
+                                        "Agar user kahe 'storyboard se banao jahan sirf script do' to Flow ke storyboard/ingredients " +
+                                        "me script ka khulasa paste karo aur Flow ko characters/scenes khud banane do, phir " +
+                                        "bhi har clip check karo. " +
+                                        "FLOW VIDEO STUDIO khatam. " +
                                         "Do EXACTLY what the user says, step by step, the way he says it — " +
                                         "never improvise a different plan or skip his steps. " +
                                         "When he asks you to do something on the phone, ALWAYS use the tools " +

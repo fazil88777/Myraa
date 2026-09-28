@@ -224,6 +224,12 @@ object ToolHandler {
                     args.optString("script"),
                     context
                 )
+                "flow_video" -> flowVideo(
+                    args.optString("idea"),
+                    args.optString("minutes"),
+                    args.optString("mode"),
+                    context
+                )
                 else -> "ERROR: unknown tool $name"
             }
         } catch (e: Exception) {
@@ -328,6 +334,28 @@ object ToolHandler {
             "OK: opened $u in the browser — tell the user it is open on his screen"
         } catch (e: Exception) {
             "ERROR: cannot open website: ${e.message}"
+        }
+    }
+
+    // ---------------- flow_video: Google Flow AI video studio ----------------
+
+    private fun flowVideo(idea: String, minutesRaw: String, mode: String, context: Context): String {
+        if (idea.isBlank()) return "ERROR: idea khali hai — pehle user se video ka idea poocho"
+        val mins = minutesRaw.trim().toDoubleOrNull()?.takeIf { it > 0 } ?: 1.0
+        // Veo clips are ~8 seconds each
+        val scenes = kotlin.math.ceil(mins * 60.0 / 8.0).toInt().coerceAtLeast(1)
+        val m = if (mode.equals("storyboard", ignoreCase = true)) "storyboard" else "fast"
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://labs.google/flow"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            "OK: Flow khul gaya hai (Chrome me). IDEA: $idea | DURATION: $mins min | " +
+                    "SCENES: $scenes (8-second Veo clips) | MODE: $m. " +
+                    "Ab MASTER PLAN banao: character bible + dumdaar script + har scene ka " +
+                    "alag Veo prompt, save_script se save karo, phir Flow ke storyboard me " +
+                    "scene 1 se banana shuru karo."
+        } catch (e: Exception) {
+            "ERROR: Flow nahi khul saka: ${e.message}"
         }
     }
 
