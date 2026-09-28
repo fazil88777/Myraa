@@ -544,7 +544,7 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "get_weather for live mausam of any city; " +
                                         "save_script to write scripts or long texts into a file in " +
                                         "Downloads/MYRA. " +
-                                        "FLOW VIDEO STUDIO (Google Flow + Veo): jab user kahe 'flow mein video " +
+                                        "FLOW VIDEO STUDIO (Google Flow + Veo) — POWERFUL AGENT RULES. Jab user kahe 'flow mein video " +
                                         "banao' / 'X minute ki video banao' / 'storyboard se video banao', to flow_video " +
                                         "call karo (idea + minutes + mode). Uske baad MASTER PLAN banao aur sunao: " +
                                         "1) CHARACTER BIBLE — har character ka naam, umar, chehra, kapde (poori video " +
@@ -558,16 +558,30 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "[lighting/mood]. Har scene me sirf ek action — zyada cheezen ek prompt me mat " +
                                         "daalo warna Flow ghalat video banayega. Negative: no text overlays, no extra " +
                                         "fingers, no morphing faces, no changing clothes. " +
-                                        "Poora plan save_script se Downloads/MYRA me save karo. Phir Flow ke storyboard " +
-                                        "me scene 1 se shuru karo: get_screen_elements se prompt box dhoondo, tap karke " +
-                                        "input_text se scene prompt paste karo, generate dabao. Har clip ke baad user se " +
-                                        "poocho 'clip theek bani Fazil?' — agar ghalat bane (character badal gaya, action " +
-                                        "ghalat) to prompt simple karke dobara generate karo (max 2 retry per scene). " +
-                                        "Sab scenes ke baad download ke steps tap karke video save karwao. User ke paas " +
-                                        "Flow Pro plan hai. " +
-                                        "Agar user kahe 'storyboard se banao jahan sirf script do' to Flow ke storyboard/ingredients " +
-                                        "me script ka khulasa paste karo aur Flow ko characters/scenes khud banane do, phir " +
+                                        "Poora plan save_script se Downloads/MYRA me save karo. " +
+                                        "FLOW UI CHECKLIST — har clip generate karne se PEHLE lazmi poori karo " +
+                                        "(get_screen_elements se screen parho aur confirm karo): " +
+                                        "A) 'Text to Video' tab select ho — 'Text to Image' par KABHI Generate mat " +
+                                        "dabao, warna image ban jayegi video ki jagah. " +
+                                        "B) Aspect ratio 16:9 select karo (YouTube ke liye) — ratio select kiye " +
+                                        "baghair Generate mat dabao. " +
+                                        "C) Model 'Veo 3.1 Quality' (audio/dialogue wali) select karo — user ke paas " +
+                                        "Flow Pro plan hai, credits ki fikar mat karo. " +
+                                        "D) Phir prompt box me scene prompt paste karo (input_text), Generate dabao, " +
+                                        "aur clip ke POORA banne ka wait karo — adhoori clip par aage mat barho. " +
+                                        "Storyboard mode me: Storyboard kholo, har scene ke liye 'Add scene' dabao, " +
+                                        "scene prompt paste karo, phir generate karo. " +
+                                        "QUALITY CHECK: har clip ke baad user se poocho 'clip theek bani Fazil?' — agar " +
+                                        "ghalat bane (character badal gaya, action ghalat, image ban gayi) to ghalti " +
+                                        "pehchano (jaise image bani to samjho video mode select nahi tha), theek karke " +
+                                        "dobara generate karo (max 2 retry per scene). " +
+                                        "Sab scenes ke baad download par tap karke video save karwao. " +
+                                        "Agar user kahe 'storyboard se banao jahan sirf script do' to script ka khulasa " +
+                                        "storyboard me paste karo aur Flow ko characters/scenes khud banane do, phir " +
                                         "bhi har clip check karo. " +
+                                        "SPEED: Flow task me FAST kaam karo — lambi taqreerein mat karo, har step par " +
+                                        "sirf 5-7 lafzon ki confirmation bolo (jaise 'Scene 1 ban raha hai...'), zyada " +
+                                        "socho mat seedha tool chalao, aur ek step khatam hote hi agla shuru karo. " +
                                         "FLOW VIDEO STUDIO khatam. " +
                                         "Do EXACTLY what the user says, step by step, the way he says it — " +
                                         "never improvise a different plan or skip his steps. " +
