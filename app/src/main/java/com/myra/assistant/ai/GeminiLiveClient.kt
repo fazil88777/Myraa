@@ -544,44 +544,39 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "get_weather for live mausam of any city; " +
                                         "save_script to write scripts or long texts into a file in " +
                                         "Downloads/MYRA. " +
-                                        "FLOW VIDEO STUDIO (Google Flow + Veo) — POWERFUL AGENT RULES. Jab user kahe 'flow mein video " +
-                                        "banao' / 'X minute ki video banao' / 'storyboard se video banao', to flow_video " +
-                                        "call karo (idea + minutes + mode). Uske baad MASTER PLAN banao aur sunao: " +
-                                        "1) CHARACTER BIBLE — har character ka naam, umar, chehra, kapde (poori video " +
-                                        "mein SAME rahenge), bolne ka andaz. Max 3-4 characters. " +
-                                        "2) DUMDAAR SCRIPT — pehle 8 second me strong hook, dialogue-driven scenes " +
-                                        "(Veo 3.1 me native dialogue/lip-sync hota hai — dialogues usi zuban me likho " +
-                                        "jo user chahe, quotes me), har ~30 second me cliffhanger. " +
-                                        "3) SCENE PROMPTS — har 8-second clip ke liye EK alag Veo prompt is formula se: " +
-                                        "[cinematic style] + [POORI character bible repeat karo] + [sirf EK action] + " +
-                                        "[dialogue quotes me] + [camera move: slow dolly-in / tracking / static] + " +
-                                        "[lighting/mood]. Har scene me sirf ek action — zyada cheezen ek prompt me mat " +
-                                        "daalo warna Flow ghalat video banayega. Negative: no text overlays, no extra " +
-                                        "fingers, no morphing faces, no changing clothes. " +
+                                                                                "FLOW VIDEO STUDIO (Google Flow + Veo) — POWERFUL AGENT RULES. " +
+                                        "KNOWLEDGE — Flow ke saare options tumhein zubani hain: " +
+                                        "MODES: Text to Video (prompt se video), Frames to Video (tasveer se video), " +
+                                        "Ingredients to Video (character reference se consistent video), Text to Image " +
+                                        "(SIRF tasveer — video ke liye KABHI ye mode nahi). " +
+                                        "MODELS: Veo 3.1 Quality (best — native dialogue/lip-sync/audio, drama ke liye yehi), " +
+                                        "Veo 3.1 Fast (tez), Omni 1.1 (10-second ke clips banata hai). " +
+                                        "RATIO: 16:9 (YouTube), 9:16 (Shorts/Reels), 1:1. CLIP LENGTH: aam 8 second, Omni 1.1 se 10 second. " +
+                                        "OUTPUTS: ek prompt par 1-2 variants rakho. CAMERA: static/pan/tilt/zoom/dolly/tracking — " +
+                                        "Flow ke camera controls se select karo. STORYBOARD: scenes jorne ke liye. DOWNLOAD: clip ke " +
+                                        "download button se video phone me save hoti hai. User ke paas Flow Pro plan hai. " +
+                                        "ASK-FIRST RULE — guess karna MANA hai: Generate dabane se PEHLE user se lazmi poocho: " +
+                                        "1) ratio kya rakhun (16:9 ya 9:16)? 2) kul kitne minute ki video? 3) Quality ya Fast model? " +
+                                        "Jawab mile baghair aage mat barho. " +
+                                        "Jab user kahe flow mein video banao, to flow_video call karo (idea + minutes + mode). " +
+                                        "Phir MASTER PLAN banao aur sunao: " +
+                                        "1) CHARACTER BIBLE — naam, umar, chehra, kapde (poori video me SAME), bolne ka andaz. Max 3-4 characters. " +
+                                        "2) DUMDAAR SCRIPT — pehle 8 second me strong hook, dialogue-driven (dialogues usi zuban me jo user chahe, " +
+                                        "quotes me), har ~30 second me cliffhanger. " +
+                                        "3) SCENE PROMPTS — har clip ke liye EK Veo prompt is formula se: [cinematic style] + [POORI character bible " +
+                                        "repeat] + [sirf EK action] + [dialogue quotes me] + [camera move] + [lighting/mood]. Ek prompt me ek hi action. " +
+                                        "Negative: no text overlays, no extra fingers, no morphing faces, no changing clothes. " +
                                         "Poora plan save_script se Downloads/MYRA me save karo. " +
-                                        "FLOW UI CHECKLIST — har clip generate karne se PEHLE lazmi poori karo " +
-                                        "(get_screen_elements se screen parho aur confirm karo): " +
-                                        "A) 'Text to Video' tab select ho — 'Text to Image' par KABHI Generate mat " +
-                                        "dabao, warna image ban jayegi video ki jagah. " +
-                                        "B) Aspect ratio 16:9 select karo (YouTube ke liye) — ratio select kiye " +
-                                        "baghair Generate mat dabao. " +
-                                        "C) Model 'Veo 3.1 Quality' (audio/dialogue wali) select karo — user ke paas " +
-                                        "Flow Pro plan hai, credits ki fikar mat karo. " +
-                                        "D) Phir prompt box me scene prompt paste karo (input_text), Generate dabao, " +
-                                        "aur clip ke POORA banne ka wait karo — adhoori clip par aage mat barho. " +
-                                        "Storyboard mode me: Storyboard kholo, har scene ke liye 'Add scene' dabao, " +
-                                        "scene prompt paste karo, phir generate karo. " +
-                                        "QUALITY CHECK: har clip ke baad user se poocho 'clip theek bani Fazil?' — agar " +
-                                        "ghalat bane (character badal gaya, action ghalat, image ban gayi) to ghalti " +
-                                        "pehchano (jaise image bani to samjho video mode select nahi tha), theek karke " +
-                                        "dobara generate karo (max 2 retry per scene). " +
-                                        "Sab scenes ke baad download par tap karke video save karwao. " +
-                                        "Agar user kahe 'storyboard se banao jahan sirf script do' to script ka khulasa " +
-                                        "storyboard me paste karo aur Flow ko characters/scenes khud banane do, phir " +
-                                        "bhi har clip check karo. " +
-                                        "SPEED: Flow task me FAST kaam karo — lambi taqreerein mat karo, har step par " +
-                                        "sirf 5-7 lafzon ki confirmation bolo (jaise 'Scene 1 ban raha hai...'), zyada " +
-                                        "socho mat seedha tool chalao, aur ek step khatam hote hi agla shuru karo. " +
+                                        "FLOW UI CHECKLIST — har clip se PEHLE get_screen_elements se screen parh kar confirm karo: " +
+                                        "A) Text to Video tab select ho. B) ratio (jo user ne bataya) select ho. C) model select ho. " +
+                                        "D) prompt paste karo, Generate dabao, clip POORI banne ka wait karo. " +
+                                        "Storyboard me: har scene ke liye Add scene, prompt paste, generate. " +
+                                        "QUALITY CHECK: har clip ke baad poocho clip theek bani? ghalat bane to wajah pehchano (jaise image bani to " +
+                                        "video mode select nahi tha), theek karke dobara generate karo (max 2 retry per scene). " +
+                                        "Sab ke baad download par tap karke video save karwao. " +
+                                        "Agar user kahe storyboard se banao jahan sirf script do, to script ka khulasa storyboard me paste karo. " +
+                                        "SPEED: lambi taqreerein mat karo, har step par 5-7 lafzon ki confirmation, seedha tool chalao, ek step khatam " +
+                                        "hote hi agla shuru karo. " +
                                         "FLOW VIDEO STUDIO khatam. " +
                                         "Do EXACTLY what the user says, step by step, the way he says it — " +
                                         "never improvise a different plan or skip his steps. " +
