@@ -288,6 +288,46 @@ class MyraAccessibilityService : AccessibilityService() {
             }
         }
 
+        /**
+         * PROOF helpers: let tool results carry screen evidence so the
+         * assistant can never claim an action succeeded without proof.
+         */
+
+        /** Current text of the focused (or first) editable field, or null. */
+        fun getFocusedFieldText(): String? {
+            val svc = instance ?: return null
+            return try {
+                val root = svc.rootInActiveWindow ?: return null
+                var target = svc.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                if (target == null) target = findEditable(root)
+                target?.text?.toString()
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        /** Short snapshot of visible texts on screen, for proof in tool results. */
+        fun screenTextSnapshot(maxLen: Int = 240): String {
+            val svc = instance ?: return "?"
+            return try {
+                val root = svc.rootInActiveWindow ?: return "?"
+                val out = StringBuilder()
+                fun walk(node: AccessibilityNodeInfo?) {
+                    if (node == null || out.length >= maxLen) return
+                    val t = node.text?.toString()?.trim()
+                    if (!t.isNullOrBlank() && t.length > 1) {
+                        if (out.isNotEmpty()) out.append(" | ")
+                        out.append(t.take(36))
+                    }
+                    for (i in 0 until node.childCount) walk(node.getChild(i))
+                }
+                walk(root)
+                out.toString().take(maxLen).ifBlank { "(screen par koi text nazar nahi aaya)" }
+            } catch (_: Exception) {
+                "?"
+            }
+        }
+
         fun scrollForward(): Boolean = scroll("down")
 
         /**

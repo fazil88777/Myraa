@@ -158,10 +158,17 @@ object ToolHandler {
                     context
                 )
                 "list_scheduled_messages" -> listScheduled(context)
-                "tap_text" ->
+                "tap_text" -> {
                     if (!isA11yOn()) A11Y_OFF
-                    else if (MyraAccessibilityService.clickOnText(args.optString("text"))) "OK: tapped"
-                    else "ERROR: text not found on screen"
+                    else {
+                        val t = args.optString("text")
+                        if (MyraAccessibilityService.clickOnText(t)) {
+                            Thread.sleep(900)
+                            val proof = MyraAccessibilityService.screenTextSnapshot()
+                            "OK: tapped '$t'. PROOF — screen now shows: $proof"
+                        } else "ERROR: '$t' screen par nahi mila — kuch tap NAHI hua"
+                    }
+                }
                 "tap_at" -> {
                     if (!isA11yOn()) A11Y_OFF
                     else {
@@ -169,8 +176,11 @@ object ToolHandler {
                         val y = args.optDouble("y", -1.0).toInt()
                         if (x in 0..1000 && y in 0..1000 &&
                             MyraAccessibilityService.tapAt(x, y)
-                        ) "OK: tapped at $x,$y"
-                        else "ERROR: tap gesture failed"
+                        ) {
+                            Thread.sleep(900)
+                            val proof = MyraAccessibilityService.screenTextSnapshot()
+                            "OK: tapped at $x,$y. PROOF — screen now shows: $proof"
+                        } else "ERROR: tap gesture failed — kuch NAHI hua"
                     }
                 }
                 "swipe" -> {
@@ -196,10 +206,24 @@ object ToolHandler {
                 "get_screen_elements" ->
                     if (!isA11yOn()) A11Y_OFF
                     else "OK:\n" + MyraAccessibilityService.getScreenElements()
-                "input_text" ->
+                "input_text" -> {
                     if (!isA11yOn()) A11Y_OFF
-                    else if (MyraAccessibilityService.inputText(args.optString("text"))) "OK: typed"
-                    else "ERROR: no input field focused"
+                    else {
+                        val t = args.optString("text")
+                        if (!MyraAccessibilityService.inputText(t)) {
+                            "ERROR: koi input field nahi mila — text type NAHI hua"
+                        } else {
+                            Thread.sleep(700)
+                            val shown = MyraAccessibilityService.getFocusedFieldText()
+                            if (!shown.isNullOrBlank() && shown.contains(t.take(10))) {
+                                "OK: typed + VERIFIED — field mein likha hai: '${shown.take(70)}'"
+                            } else {
+                                "ERROR: type kiya lekin field mein text verify NAHI hua " +
+                                        "(field shows: '${shown?.take(40) ?: "?"}') — dobara try karo"
+                            }
+                        }
+                    }
+                }
                 "scroll_screen" ->
                     if (!isA11yOn()) A11Y_OFF
                     else if (MyraAccessibilityService.scroll(args.optString("direction", "down"))) "OK: scrolled"

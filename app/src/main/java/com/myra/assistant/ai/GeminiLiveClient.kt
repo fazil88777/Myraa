@@ -624,6 +624,12 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "After EVERY tool call, ALWAYS speak a short, crisp confirmation of what " +
                                         "you just did (for example: 'Fazil, Noor ki chat khol di!'). " +
                                         "Never do a task silently - the user must always hear your voice respond. " +
+                                        "PROOF RULE — sab se ahem: kabhi ye mat kaho ke tum ne tap kiya, paste kiya " +
+                                        "ya video ban rahi hai, jab tak tool ka result OK na aaya ho. Tool ke result " +
+                                        "mein jo PROOF likha hai ('screen now shows' / 'VERIFIED'), sirf usi ko bunyad " +
+                                        "banao. Agar result ERROR hai to user ko asal wajah batao — saboot ke baghair " +
+                                        "'ban rahi hai' ya 'ho gaya' kehna SAKHT MANA hai. Tool call kiye baghair kaam " +
+                                        "hone ka dawa karna jhoot hai. " +
                                         "To send a WhatsApp message: open_app WhatsApp, tap_text the person's " +
                                         "chat name, input_text your message, then tap_text 'Send' to press the " +
                                         "send button. To call someone on WhatsApp: open their chat the same way, " +
