@@ -123,6 +123,10 @@ class MainActivity : AppCompatActivity() {
         viewModel.isConnected.observe(this) { connected ->
             HotwordService.sessionActive = connected == true
         }
+        // Voice-controlled screen share: MYRA posts a request, we launch/stop capture.
+        viewModel.screenShareRequest.observe(this) { on ->
+            if (on != null) setScreenShare(on)
+        }
         if (HotwordStore.isEnabled(this) &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             !Settings.canDrawOverlays(this)
@@ -263,13 +267,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Called by HomeFragment's Screen Share quick action. */
-    fun toggleScreenShare() {        if (viewModel.isSharing.value == true) {
+    fun toggleScreenShare() {
+        setScreenShare(!(viewModel.isSharing.value == true))
+    }
+
+    /** Voice-controlled screen share (MYRA) and the quick-action button share this path. */
+    fun setScreenShare(on: Boolean) {
+        if (on) {
+            if (viewModel.isSharing.value == true) return
+            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            screenCaptureLauncher.launch(mpm.createScreenCaptureIntent())
+        } else {
+            if (viewModel.isSharing.value != true) return
             stopService(Intent(this, ScreenShareService::class.java))
             viewModel.setSharing(false)
             toast("Screen share OFF")
-        } else {
-            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            screenCaptureLauncher.launch(mpm.createScreenCaptureIntent())
         }
     }
 

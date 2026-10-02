@@ -243,6 +243,17 @@ object ToolHandler {
                 "read_webpage" -> readWebpage(args.optString("url"))
                 "open_website" -> openWebsite(args.optString("url"), context)
                 "get_weather" -> getWeather(args.optString("location"))
+                "get_crypto_price" -> getCryptoPrice(args.optString("symbol"))
+                "set_screen_share" -> {
+                    val on = args.optBoolean("enabled", true)
+                    val vm = com.myra.assistant.util.MyraBridge.viewModel
+                    if (vm == null) "ERROR: app ready nahi"
+                    else {
+                        vm.requestScreenShare(on)
+                        if (on) "OK: screen share ka system dialog khol rahi hoon — user ko 'Start now' dabana hoga (Android security, ek tap), phir main screen dekhungi"
+                        else "OK: screen share band kar diya"
+                    }
+                }
                 "save_script" -> saveScript(
                     args.optString("title"),
                     args.optString("script"),
@@ -438,6 +449,22 @@ object ToolHandler {
                     "barish ka imkaan $rain%; nami $hum%; hawa ${wind.toInt()} km/h."
         } catch (e: Exception) {
             "ERROR: weather failed: ${e.message}"
+        }
+    }
+
+    // ---------------- get_crypto_price ----------------
+
+    private fun getCryptoPrice(symbol: String): String {
+        var s = symbol.trim().uppercase().replace(" ", "")
+        if (s.isBlank()) return "ERROR: coin ka naam nahi diya"
+        if (!s.endsWith("USDT")) s += "USDT"
+        return try {
+            val root = JSONObject(httpGet("https://api.binance.com/api/v3/ticker/price?symbol=$s"))
+            val price = root.optString("price", "")
+            if (price.isBlank()) "ERROR: price nahi mili: $symbol"
+            else "OK: $s = $price USDT (live Binance price)"
+        } catch (e: Exception) {
+            "ERROR: price fetch failed: ${e.message}"
         }
     }
 

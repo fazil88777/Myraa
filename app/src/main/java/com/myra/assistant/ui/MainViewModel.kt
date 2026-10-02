@@ -115,7 +115,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (manualStop || reconnectScheduled) return
         val key = savedApiKey ?: return
         if (reconnectAttempts >= 5) {
-            _statusText.postValue("Connection lost — net check karke dobara connect dabao, boss")
+            _statusText.postValue("Connection lost — net check karke dobara connect dabao")
             return
         }
         reconnectAttempts++
@@ -280,13 +280,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             override fun onError(msg: String) {
-                _statusText.postValue("Error: $msg")
+                _statusText.postValue(msg)
                 scheduleReconnect()
             }
 
             override fun onClosed(reason: String) {
                 _isConnected.postValue(false)
-                _statusText.postValue("Disconnected: $reason")
+                _statusText.postValue(reason)
                 scheduleReconnect()
             }
         })
@@ -322,6 +322,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ScreenShareService.onFrame = null
         }
         _isSharing.postValue(sharing)
+    }
+
+    /** Voice-controlled screen share: MYRA posts here, MainActivity launches/stops capture. */
+    private val _screenShareRequest = MutableLiveData<Boolean>()
+    val screenShareRequest: LiveData<Boolean> = _screenShareRequest
+
+    fun requestScreenShare(on: Boolean) {
+        _screenShareRequest.postValue(on)
     }
 
     fun clearMessages() {

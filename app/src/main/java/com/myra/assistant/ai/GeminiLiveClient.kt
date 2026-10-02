@@ -1,6 +1,7 @@
 package com.myra.assistant.ai
 
 import android.util.Base64
+import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -77,15 +78,17 @@ class GeminiLiveClient(private val listener: Listener) {
                 }
 
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                    listener.onClosed("code=$code reason=$reason")
+                    try { webSocket.close(1000, "bye") } catch (_: Exception) {}
+                    listener.onClosed(friendlyCloseReason(code, reason))
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    listener.onClosed("code=$code reason=$reason")
+                    listener.onClosed(friendlyCloseReason(code, reason))
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    listener.onError("Socket failure: " + t.message)
+                    Log.d("GeminiLive", "Socket failure", t)
+                    listener.onError(friendlyFailureReason(t))
                 }
             })
         } catch (e: Exception) {
@@ -99,6 +102,25 @@ class GeminiLiveClient(private val listener: Listener) {
         } catch (_: Exception) {
         }
         socket = null
+    }
+
+    private fun friendlyCloseReason(code: Int, reason: String): String {
+        Log.d("GeminiLive", "WS closed code=$code reason=$reason")
+        return when {
+            reason.contains("GoAway", ignoreCase = true) ->
+                "Server ne session band kar diya (waqt poora ho gaya tha) — dobara connect ho rahi hoon"
+            code == 1000 -> "Disconnected"
+            else -> "Connection toot gaya — dobara connect ho rahi hoon"
+        }
+    }
+
+    private fun friendlyFailureReason(t: Throwable): String {
+        val m = t.message ?: ""
+        return when {
+            m.contains("Unable to resolve host", ignoreCase = true) ->
+                "Internet nahi mil raha — net check karo, phir dobara try karungi"
+            else -> "Connection me masla aaya — dobara connect ho rahi hoon"
+        }
     }
 
     fun sendSetup() {
@@ -329,8 +351,10 @@ class GeminiLiveClient(private val listener: Listener) {
                 functionDecl(
                     "can_see_screen",
                     "Check whether you can currently SEE the user's phone screen. Call this " +
-                            "before doing any visual task: if the screen share is OFF, plainly ask the " +
-                            "user to turn on the Screen Share button first instead of guessing.",
+                            "before doing any visual task: if the screen share is OFF, call " +
+                            "set_screen_share(enabled=true) and plainly ask the user to tap " +
+                            "'Start now' on the system dialog (Android security needs that one " +
+                            "tap) instead of guessing.",
                     JSONObject(),
                     emptyList()
                 )
@@ -397,6 +421,25 @@ class GeminiLiveClient(private val listener: Listener) {
                             "humidity, wind. Use whenever the user asks about mausam, weather or barish.",
                     obj("location" to strProp("City name, e.g. 'Lahore' or 'Karachi'")),
                     listOf("location")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "get_crypto_price",
+                    "Get the LIVE price of any cryptocurrency from Binance (no key needed). " +
+                            "Use whenever the user asks a coin's price, e.g. 'BTC ki price kya hai'.",
+                    obj("symbol" to strProp("Coin symbol, e.g. 'BTC' or 'ETH' (USDT pair is assumed)")),
+                    listOf("symbol")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "set_screen_share",
+                    "Turn the phone screen share on or off with your voice. ON opens the " +
+                            "Android system consent dialog — the user must tap 'Start now' once " +
+                            "(no app can record the screen without that tap). OFF stops it at once.",
+                    obj("enabled" to boolProp("true to turn screen share ON, false to turn it OFF")),
+                    listOf("enabled")
                 )
             )
             fdArray.put(
@@ -496,7 +539,8 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "You can control his phone with tools: open_app, search_youtube, make_call, " +
                                         "send_sms, tap_text, tap_at, swipe, press_back, input_text, scroll_screen, " +
                                         "get_current_time, can_see_screen, get_screen_elements, schedule_message, " +
-                                        "cancel_scheduled_message, list_scheduled_messages, flow_video. " +
+                                        "cancel_scheduled_message, list_scheduled_messages, flow_video, " +
+                                        "get_crypto_price, set_screen_share. " +
                                         "HOTWORD: you have a background 'hi MYRA' listener. If the user says " +
                                         "'hotword on karo', call set_hotword with enabled=true and confirm " +
                                         "'Ho gaya Fazil! Hotword on hai — ab jab bhi kaho ge hi MYRA, " +
@@ -542,6 +586,8 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "with prices and links); read_webpage to open a link and read its " +
                                         "full details; open_website to show any site in his phone browser; " +
                                         "get_weather for live mausam of any city; " +
+                                        "get_crypto_price se kisi coin ki live Binance price \u2014 'BTC ki " +
+                                        "price kya hai' par ye tool call karo; " +
                                         "save_script to write scripts or long texts into a file in " +
                                         "Downloads/MYRA. " +
                                                                                 "FLOW VIDEO STUDIO (Google Flow + Veo) — POWERFUL AGENT RULES. " +
@@ -578,6 +624,24 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "SPEED: lambi taqreerein mat karo, har step par 5-7 lafzon ki confirmation, seedha tool chalao, ek step khatam " +
                                         "hote hi agla shuru karo. " +
                                         "FLOW VIDEO STUDIO khatam. " +
+                                        "TRADING USTAD: jab user trading seekhna chahe, tum uski ustad ho — " +
+                                        "samjhao, live example dikhao, sikhao. PEHLA USOOL: pro trader ka asal " +
+                                        "raaz prediction NAHI, risk management hai — har trade me 1-2% se zyada " +
+                                        "risk kabhi nahi. UP/DOWN PREDICTION SAKHT MANA HAI: kabhi mat kaho agle " +
+                                        "minute/hour me price up ya down jayegi — koi nahi jaan sakta, jo signal " +
+                                        "ka dawa kare wo jhoot bolta hai. Trend sikhao: uptrend = higher highs + " +
+                                        "higher lows. Support = jahan price baar baar ruk kar upar gayi (buyers " +
+                                        "mazboot); resistance = jahan ruk kar neeche aayi. Live example ke liye " +
+                                        "HAMESHA get_crypto_price se asli price lo. Pehle demo, phir real. " +
+                                        "QUOTEX MASTER: Quotex binary-options app hai — asset chuno, expiry " +
+                                        "(masalan 1 min), amount, phir Up/Down; jeeto to stake + payout%, haaro " +
+                                        "to stake gaya. Seekhne ke liye HAMESHA pehle DEMO account (free virtual " +
+                                        "$10,000) — wahan trade kar ke dikhao. User kahe 'Quotex kholo' to " +
+                                        "open_app se kholo, phir get_screen_elements se screen parho: DEMO dikhe " +
+                                        "to theek, REAL dikhe to khabardar karo ke asal paise lag rahe hain. " +
+                                        "Asset/timeframe/amount uske lafzon se tools se set karo, lekin REAL-money " +
+                                        "trade ka AAKHRI confirm tap HAMESHA wohi karega — tum khud real trade " +
+                                        "confirm kabhi mat karo. Har tap par PROOF RULE laagu hai. " +
                                         "Do EXACTLY what the user says, step by step, the way he says it — " +
                                         "never improvise a different plan or skip his steps. " +
                                         "When he asks you to do something on the phone, ALWAYS use the tools " +
@@ -598,6 +662,11 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "enabled=false. When camera frames arrive, you can see him — " +
                                         "describe what you see only when he asks. Never claim to see him " +
                                         "when the camera is off. " +
+                                        "SCREEN SHARE: 'screen share on karo' par set_screen_share(enabled=true) " +
+                                        "call karo, phir user se kaho system dialog par 'Start now' dabaye " +
+                                        "(Android security — bina uske tap ke koi app screen record nahi kar " +
+                                        "sakti, is liye ek tap lazmi hai). 'screen share band karo' par " +
+                                        "set_screen_share(enabled=false) — band foran, koi dialog nahi. " +
                                         "SCHEDULED MESSAGES: if the user says 'Noor ko raat 12 baje birthday " +
                                         "wish bhej dena' or '10 minute baad Mujad ko ye bhej dena', call " +
                                         "schedule_message with the contact, the exact message, and when_text " +
