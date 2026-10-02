@@ -30,12 +30,26 @@ class GeminiLiveClient(private val listener: Listener) {
         fun onInterrupted()
         fun onError(msg: String)
         fun onClosed(reason: String)
+        fun onGoAway()
     }
 
     companion object {
         const val MODEL = "models/gemini-3.1-flash-live-preview"
         const val BASE_URL =
             "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key="
+
+        /** Latest session-resumption handle from the server (valid ~10 min). */
+        @Volatile
+        var resumptionHandle: String? = null
+
+        @Volatile
+        var resumptionHandleAt: Long = 0L
+
+        /** Returns the saved handle only if it is fresh enough to be usable. */
+        fun takeResumptionHandle(): String? {
+            val h = resumptionHandle
+            return if (!h.isNullOrBlank() && System.currentTimeMillis() - resumptionHandleAt < 8 * 60 * 1000) h else null
+        }
     }
 
     private val client: OkHttpClient =
@@ -486,6 +500,13 @@ class GeminiLiveClient(private val listener: Listener) {
             val setup = JSONObject()
                 .put("model", MODEL)
                 .put(
+                    "sessionResumption",
+                    // Resume previous conversation context when we have a fresh
+                    // handle (e.g. after a goAway rotation or an abnormal drop).
+                    // Empty object = just enable resumption for this session.
+                    takeResumptionHandle()?.let { JSONObject().put("handle", it) } ?: JSONObject()
+                )
+                .put(
                     "generationConfig",
                     JSONObject()
                         .put("responseModalities", JSONArray().put("AUDIO"))
@@ -827,6 +848,28 @@ class GeminiLiveClient(private val listener: Listener) {
         if (root.has("error")) {
             val msg = root.optJSONObject("error")?.optString("message") ?: "server error"
             listener.onError("Server error: $msg")
+            return
+        }
+
+        // Session-resumption handle: the server periodically sends a new one.
+        // Save it so the next reconnect can restore the conversation context.
+        if (root.has("sessionResumptionUpdate")) {
+            val h = root.getJSONObject("sessionResumptionUpdate").optString("newHandle")
+            if (h.isNotBlank()) {
+                resumptionHandle = h
+                resumptionHandleAt = System.currentTimeMillis()
+                android.util.Log.d("GeminiLive", "saved resumption handle")
+            }
+            return
+        }
+
+        // goAway: the server warns us it will terminate the session soon
+        // (e.g. the ~10-15 min session limit). Rotate gracefully instead of
+        // waiting for the ugly abort.
+        if (root.has("goAway")) {
+            val tl = root.getJSONObject("goAway").optString("timeLeft")
+            android.util.Log.d("GeminiLive", "goAway received, timeLeft=$tl")
+            listener.onGoAway()
             return
         }
 

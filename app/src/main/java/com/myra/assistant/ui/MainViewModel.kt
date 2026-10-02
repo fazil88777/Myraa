@@ -182,6 +182,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startSession(apiKey: String) {
         if (_isConnected.value == true) return
         savedApiKey = apiKey
+        beginNewSession(apiKey)
+    }
+
+    /**
+     * Starts a brand-new session, tearing down any live one first (not a
+     * manual stop). Used for both fresh starts and planned rotations.
+     */
+    private fun beginNewSession(apiKey: String) {
+        stopSessionInternal()
+        // Invalidate stale delayed callbacks (e.g. a pending autoReconnect
+        // posted by the dying session's onClosed).
         sessionGen++
         manualStop = false
         reconnectScheduled = false
@@ -288,6 +299,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _isConnected.postValue(false)
                 _statusText.postValue(reason)
                 scheduleReconnect()
+            }
+
+            override fun onGoAway() {
+                // Server warns the session is about to end (e.g. the ~10-15
+                // min limit): rotate gracefully on the main thread instead of
+                // waiting for the ugly abort.
+                if (manualStop) return
+                watchdogHandler.post {
+                    if (manualStop) return@post
+                    beginNewSession(savedApiKey ?: return@post)
+                    _statusText.postValue("Session ka waqt khatam ho raha hai — baat yaad rakh kar dobara connect ho rahi hoon")
+                }
             }
         })
         client = c
