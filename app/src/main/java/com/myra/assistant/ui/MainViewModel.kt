@@ -61,8 +61,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val watchdogHandler = Handler(Looper.getMainLooper())
     // Nudge timer: reminds the model to speak after a tool call if it stays silent.
     private val nudgeHandler = Handler(Looper.getMainLooper())
-    // Anti-silence state: instant answer instead of "listening" with no reply.
-    private var lastNudgeAt = 0L
+    // Stuck-session state: tracks whether the model has answered at least once
+    // this session. The first turn needs a longer grace period (long system
+    // prompt cold start) — firing the watchdog too early cancels the model's
+    // in-flight answer and causes a reconnect loop with no replies.
+    private var modelRespondedThisSession = false
     private var lastUserText = ""
     private var resendText: String? = null
     private var resendTextAt = 0L
@@ -87,20 +90,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isConnected.value != true) return
         val now = System.currentTimeMillis()
         // User spoke (or typed) but the model never actually responded -> stuck.
-        // Fazil wants an INSTANT answer like Sana, never "listening" with silence.
+        // Give the model real time: 30s on the session's first turn (long system
+        // prompt cold start) and 20s afterwards. Interrupting earlier cancels the
+        // in-flight answer and traps the app in a reconnect loop with no replies.
         if (lastUserSpeechAt > lastModelResponseAt) {
             val silentFor = now - lastUserSpeechAt
-            // ~6s: nudge the model to answer NOW instead of staying silent.
-            if (silentFor > 6_000 && now - lastNudgeAt > 15_000) {
-                lastNudgeAt = now
-                try {
-                    client?.sendText("Fazil ne tumse baat ki hai — foran jawab do, khamosh mat raho.")
-                } catch (_: Exception) {
-                }
-            }
-            // ~12s: still nothing -> the session is stuck: reconnect and resend
-            // his question so it gets answered instead of being dropped.
-            if (silentFor > 12_000) {
+            val limit = if (modelRespondedThisSession) 20_000 else 30_000
+            if (silentFor > limit) {
                 autoReconnect()
                 return
             }
@@ -111,7 +107,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // so a normal answered question never triggers a false reconnect.
         val lastProgress = maxOf(lastUserSpeechAt, lastModelResponseAt)
         if (lastVoiceActivityAt > lastProgress &&
-            now - lastVoiceActivityAt > 8_000
+            now - lastVoiceActivityAt > 10_000
         ) {
             autoReconnect()
         }
@@ -222,6 +218,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         reconnectAttempts = 0
         lastUserSpeechAt = 0L
         lastVoiceActivityAt = 0L
+        modelRespondedThisSession = false
         lastModelActivityAt = System.currentTimeMillis()
         lastModelResponseAt = System.currentTimeMillis()
         pendingInputMsgIndex = -1
@@ -272,6 +269,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             override fun onAudioChunk(pcm24k: ByteArray) {
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
+                modelRespondedThisSession = true
                 try {
                     audio?.playPcm24k(pcm24k)
                 } catch (_: Exception) {
@@ -281,6 +279,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             override fun onTextDelta(text: String) {
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
+                modelRespondedThisSession = true
                 appendModelDelta(text)
             }
 
@@ -300,6 +299,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onToolCall(id: String, name: String, argsJson: String) {
                 lastModelResponseAt = System.currentTimeMillis()
+                modelRespondedThisSession = true
                 viewModelScope.launch(Dispatchers.IO) {
                     val result = try {
                         ToolHandler.execute(name, JSONObject(argsJson), getApplication())
@@ -309,13 +309,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     client?.sendToolResponse(id, name, result)
                     // Spoken-confirmation nudge: the model sometimes finishes a
                     // tool call without saying anything. If no model audio/text
-                    // follows within 7 seconds, ask it to confirm briefly.
+                    // follows within 12 seconds, ask it to confirm briefly.
+                    // (Kept gentle: firing earlier can cancel an in-flight answer.)
                     val sentAt = System.currentTimeMillis()
                     nudgeHandler.postDelayed({
                         if (_isConnected.value == true && lastModelResponseAt <= sentAt) {
                             client?.sendText("Mukhtasir mein batao ke tumne abhi kya kiya.")
                         }
-                    }, 7000)
+                    }, 12000)
                 }
             }
 
