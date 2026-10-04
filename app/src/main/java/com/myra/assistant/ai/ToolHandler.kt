@@ -236,9 +236,17 @@ object ToolHandler {
                         if (n.isEmpty()) "ERROR: no name given"
                         else {
                             com.myra.assistant.util.Prefs.userName = n
-                            "OK: name saved as $n"
+                            com.myra.assistant.util.MyraMemory.addFact("Naam: $n")
+                            "OK: name saved as $n (aur yaad bhi kar liya)"
                         }
                     }
+                "remember_fact" -> {
+                    val f = args.optString("fact", "").trim()
+                    if (f.isEmpty()) "ERROR: koi baat nahi di — kya yaad rakhun?"
+                    else if (com.myra.assistant.util.MyraMemory.addFact(f))
+                        "OK: yaad kar liya — '$f'. Ab ye baat kabhi nahi bhoolungi."
+                    else "OK: ye baat pehle se yaad hai."
+                }
                 "web_search" -> webSearch(args.optString("query"))
                 "read_webpage" -> readWebpage(args.optString("url"))
                 "open_website" -> openWebsite(args.optString("url"), context)

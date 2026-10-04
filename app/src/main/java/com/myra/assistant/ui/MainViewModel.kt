@@ -61,6 +61,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val watchdogHandler = Handler(Looper.getMainLooper())
     // Nudge timer: reminds the model to speak after a tool call if it stays silent.
     private val nudgeHandler = Handler(Looper.getMainLooper())
+    // Anti-silence state: instant answer instead of "listening" with no reply.
+    private var lastNudgeAt = 0L
+    private var lastUserText = ""
+    private var resendText: String? = null
+    private var resendTextAt = 0L
 
     private val watchdogRunnable = object : Runnable {
         override fun run() {
@@ -68,7 +73,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 checkSessionHealth()
             } catch (_: Exception) {
             }
-            watchdogHandler.postDelayed(this, 10_000)
+            watchdogHandler.postDelayed(this, 3_000)
         }
     }
 
@@ -81,11 +86,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun checkSessionHealth() {
         if (_isConnected.value != true) return
         val now = System.currentTimeMillis()
-        // User spoke (or typed) but the model never actually responded -> stuck
-        if (lastUserSpeechAt > lastModelResponseAt && now - lastUserSpeechAt > 20_000) {
-            _statusText.postValue("Reconnecting...")
-            autoReconnect()
-            return
+        // User spoke (or typed) but the model never actually responded -> stuck.
+        // Fazil wants an INSTANT answer like Sana, never "listening" with silence.
+        if (lastUserSpeechAt > lastModelResponseAt) {
+            val silentFor = now - lastUserSpeechAt
+            // ~6s: nudge the model to answer NOW instead of staying silent.
+            if (silentFor > 6_000 && now - lastNudgeAt > 15_000) {
+                lastNudgeAt = now
+                try {
+                    client?.sendText("Fazil ne tumse baat ki hai — foran jawab do, khamosh mat raho.")
+                } catch (_: Exception) {
+                }
+            }
+            // ~12s: still nothing -> the session is stuck: reconnect and resend
+            // his question so it gets answered instead of being dropped.
+            if (silentFor > 12_000) {
+                autoReconnect()
+                return
+            }
         }
         // Half-dead socket: the mic clearly hears the user speaking, but no
         // transcription ever arrives and the model never reacts (server side
@@ -93,9 +111,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // so a normal answered question never triggers a false reconnect.
         val lastProgress = maxOf(lastUserSpeechAt, lastModelResponseAt)
         if (lastVoiceActivityAt > lastProgress &&
-            now - lastVoiceActivityAt > 12_000
+            now - lastVoiceActivityAt > 8_000
         ) {
-            _statusText.postValue("Reconnecting...")
             autoReconnect()
         }
     }
@@ -121,6 +138,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         reconnectAttempts++
         reconnectScheduled = true
         val gen = sessionGen
+        // If the user asked something the model never answered, resend it
+        // after the reconnect so it gets answered instead of being dropped.
+        if (lastUserSpeechAt > lastModelResponseAt && lastUserText.isNotBlank()) {
+            resendText = lastUserText
+            resendTextAt = System.currentTimeMillis()
+        }
         _statusText.postValue("Reconnecting...")
         stopSessionInternal()
         watchdogHandler.postDelayed({
@@ -218,6 +241,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
                 _statusText.postValue("Listening...")
+                // Resend his unanswered question after an auto-reconnect so it
+                // actually gets answered instead of being dropped silently.
+                val q = resendText
+                resendText = null
+                if (q != null && System.currentTimeMillis() - resendTextAt < 60_000) {
+                    try {
+                        lastUserText = q
+                        lastUserSpeechAt = System.currentTimeMillis()
+                        client?.sendText(q)
+                    } catch (_: Exception) {
+                    }
+                }
                 try {
                     engine.startCapture { chunk ->
                         // Voice-activity tracking for the half-dead-socket watchdog:
@@ -251,6 +286,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onInputTranscription(text: String) {
                 lastUserSpeechAt = System.currentTimeMillis()
+                lastUserText = text
                 showInputTranscription(text)
             }
 
@@ -277,7 +313,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val sentAt = System.currentTimeMillis()
                     nudgeHandler.postDelayed({
                         if (_isConnected.value == true && lastModelResponseAt <= sentAt) {
-                            client?.sendText("Mukhtasir mein batao ke tumne abhi kya kiya, boss style mein.")
+                            client?.sendText("Mukhtasir mein batao ke tumne abhi kya kiya.")
                         }
                     }, 7000)
                 }
@@ -308,6 +344,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (manualStop) return
                 watchdogHandler.post {
                     if (manualStop) return@post
+                    if (lastUserSpeechAt > lastModelResponseAt && lastUserText.isNotBlank()) {
+                        resendText = lastUserText
+                        resendTextAt = System.currentTimeMillis()
+                    }
                     beginNewSession(savedApiKey ?: return@post)
                     _statusText.postValue("Session ka waqt khatam ho raha hai — baat yaad rakh kar dobara connect ho rahi hoon")
                 }
@@ -330,6 +370,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         addMessage(ChatMessage("user", text))
         pendingInputMsgIndex = -1
         lastUserSpeechAt = System.currentTimeMillis()
+        lastUserText = text
         client?.sendText(text)
     }
 
@@ -363,6 +404,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // User tapped disconnect himself -> never auto-reconnect afterwards.
         manualStop = true
         reconnectScheduled = false
+        resendText = null
         sessionGen++
         stopSessionInternal()
         _statusText.postValue("Idle")
