@@ -6,14 +6,16 @@ import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.viewModelScope
 import com.myra.assistant.ai.AudioEngine
 import com.myra.assistant.ai.CameraVision
 import com.myra.assistant.ai.GeminiLiveClient
 import com.myra.assistant.ai.ToolHandler
 import com.myra.assistant.data.ChatMessage
 import com.myra.assistant.service.ScreenShareService
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -57,6 +59,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var reconnectScheduled = false
     private var reconnectAttempts = 0
     private var sessionGen = 0
+    // Coroutine scope bound to the CURRENT session: cancelled on every teardown
+    // so a tool call from the dying session can never answer the new socket.
+    private var sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var lastVoiceActivityAt = 0L
     private val watchdogHandler = Handler(Looper.getMainLooper())
     // Nudge timer: reminds the model to speak after a tool call if it stays silent.
@@ -67,8 +72,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // in-flight answer and causes a reconnect loop with no replies.
     private var modelRespondedThisSession = false
     private var lastUserText = ""
-    private var resendText: String? = null
-    private var resendTextAt = 0L
+    // Set false right after a tool response is sent, true when the model's turn
+    // closes afterwards. The 12s confirmation nudge may only fire once this is
+    // true — never while the model may still be generating, so the nudge's text
+    // turn can't cancel a slow in-flight answer.
+    private var toolTurnClosed = false
 
     private val watchdogRunnable = object : Runnable {
         override fun run() {
@@ -134,12 +142,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         reconnectAttempts++
         reconnectScheduled = true
         val gen = sessionGen
-        // If the user asked something the model never answered, resend it
-        // after the reconnect so it gets answered instead of being dropped.
-        if (lastUserSpeechAt > lastModelResponseAt && lastUserText.isNotBlank()) {
-            resendText = lastUserText
-            resendTextAt = System.currentTimeMillis()
-        }
+        // The old session died abnormally — its resumption handle is poisoned
+        // (resuming it gives a zombie that never answers). Clear it so the
+        // reconnect starts a CLEAN session.
+        GeminiLiveClient.clearResumptionHandle()
         _statusText.postValue("Reconnecting...")
         stopSessionInternal()
         watchdogHandler.postDelayed({
@@ -147,7 +153,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // User tapped stop/start meanwhile -> respect his action, don't restart.
             if (manualStop || gen != sessionGen) return@postDelayed
             try {
-                startSession(key)
+                // beginNewSession, not startSession: startSession resets the
+                // attempt counter, which would defeat the 5-attempt give-up.
+                beginNewSession(key)
             } catch (_: Exception) {
             }
         }, 2000L * reconnectAttempts)
@@ -201,6 +209,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startSession(apiKey: String) {
         if (_isConnected.value == true) return
         savedApiKey = apiKey
+        // Fresh user-initiated start: past reconnect failures don't count.
+        reconnectAttempts = 0
         beginNewSession(apiKey)
     }
 
@@ -213,12 +223,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Invalidate stale delayed callbacks (e.g. a pending autoReconnect
         // posted by the dying session's onClosed).
         sessionGen++
+        // Fresh coroutine scope per session: a tool call from the dying
+        // session is cancelled here and can never answer the new socket.
+        try {
+            sessionScope.cancel()
+        } catch (_: Exception) {
+        }
+        sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        // Generation captured for every listener callback below: stale
+        // callbacks from the old socket die on this guard instead of driving
+        // the new session (spurious reconnects, ghost audio, wrong answers).
+        val gen = sessionGen
         manualStop = false
         reconnectScheduled = false
-        reconnectAttempts = 0
         lastUserSpeechAt = 0L
         lastVoiceActivityAt = 0L
         modelRespondedThisSession = false
+        toolTurnClosed = false
         lastModelActivityAt = System.currentTimeMillis()
         lastModelResponseAt = System.currentTimeMillis()
         pendingInputMsgIndex = -1
@@ -228,28 +249,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         audio = engine
         val c = GeminiLiveClient(object : GeminiLiveClient.Listener {
             override fun onStatus(msg: String) {
+                if (gen != sessionGen) return
                 _statusText.postValue(msg)
             }
 
             override fun onSetupComplete() {
+                if (gen != sessionGen) return
                 _isConnected.postValue(true)
-                reconnectAttempts = 0
                 reconnectScheduled = false
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
                 _statusText.postValue("Listening...")
-                // Resend his unanswered question after an auto-reconnect so it
-                // actually gets answered instead of being dropped silently.
-                val q = resendText
-                resendText = null
-                if (q != null && System.currentTimeMillis() - resendTextAt < 60_000) {
-                    try {
-                        lastUserText = q
-                        lastUserSpeechAt = System.currentTimeMillis()
-                        client?.sendText(q)
-                    } catch (_: Exception) {
-                    }
-                }
                 try {
                     engine.startCapture { chunk ->
                         // Voice-activity tracking for the half-dead-socket watchdog:
@@ -267,9 +277,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             override fun onAudioChunk(pcm24k: ByteArray) {
+                if (gen != sessionGen) return
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
                 modelRespondedThisSession = true
+                // The session proved itself healthy — reconnect failures stop counting.
+                reconnectAttempts = 0
                 try {
                     audio?.playPcm24k(pcm24k)
                 } catch (_: Exception) {
@@ -277,43 +290,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             override fun onTextDelta(text: String) {
+                if (gen != sessionGen) return
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
                 modelRespondedThisSession = true
+                reconnectAttempts = 0
                 appendModelDelta(text)
             }
 
             override fun onInputTranscription(text: String) {
+                if (gen != sessionGen) return
                 lastUserSpeechAt = System.currentTimeMillis()
                 lastUserText = text
                 showInputTranscription(text)
             }
 
             override fun onTurnComplete() {
+                if (gen != sessionGen) return
                 lastModelActivityAt = System.currentTimeMillis()
                 // NOTE: do NOT update lastModelResponseAt here — turnComplete also
                 // fires for the user's own turn, which would blind the watchdog.
+                toolTurnClosed = true
                 turnHasModelMessage = false
                 pendingInputMsgIndex = -1
             }
 
             override fun onToolCall(id: String, name: String, argsJson: String) {
+                if (gen != sessionGen) return
                 lastModelResponseAt = System.currentTimeMillis()
                 modelRespondedThisSession = true
-                viewModelScope.launch(Dispatchers.IO) {
+                reconnectAttempts = 0
+                // Scoped to THIS session (not the whole ViewModel): if the
+                // session dies mid-tool, the coroutine is cancelled and the
+                // answer can never be sent to the wrong socket.
+                sessionScope.launch {
                     val result = try {
                         ToolHandler.execute(name, JSONObject(argsJson), getApplication())
+                    } catch (e: CancellationException) {
+                        throw e // session died — don't report, don't answer
                     } catch (e: Exception) {
                         "ERROR: ${e.message}"
                     }
+                    // Session rotated while the tool ran -> drop the answer.
+                    if (gen != sessionGen) return@launch
                     client?.sendToolResponse(id, name, result)
                     // Spoken-confirmation nudge: the model sometimes finishes a
-                    // tool call without saying anything. If no model audio/text
-                    // follows within 12 seconds, ask it to confirm briefly.
-                    // (Kept gentle: firing earlier can cancel an in-flight answer.)
+                    // tool call without saying anything. It fires ONLY if the
+                    // model stayed silent AND its turn actually closed
+                    // (toolTurnClosed set by turnComplete) — never while it may
+                    // still be generating, so the nudge's text turn can't cancel
+                    // a slow in-flight answer.
+                    toolTurnClosed = false
                     val sentAt = System.currentTimeMillis()
                     nudgeHandler.postDelayed({
-                        if (_isConnected.value == true && lastModelResponseAt <= sentAt) {
+                        if (gen != sessionGen) return@postDelayed
+                        if (_isConnected.value == true && toolTurnClosed &&
+                            lastModelResponseAt <= sentAt
+                        ) {
                             client?.sendText("Mukhtasir mein batao ke tumne abhi kya kiya.")
                         }
                     }, 12000)
@@ -321,6 +354,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             override fun onInterrupted() {
+                if (gen != sessionGen) return
                 try {
                     audio?.stopPlayback()
                 } catch (_: Exception) {
@@ -328,27 +362,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             override fun onError(msg: String) {
+                if (gen != sessionGen) return
+                // The socket reported an error: mark the session dead so
+                // scheduleReconnect() actually reconnects instead of no-op'ing
+                // on the stale "connected" flag.
+                _isConnected.postValue(false)
                 _statusText.postValue(msg)
                 scheduleReconnect()
             }
 
             override fun onClosed(reason: String) {
+                if (gen != sessionGen) return
                 _isConnected.postValue(false)
                 _statusText.postValue(reason)
                 scheduleReconnect()
             }
 
             override fun onGoAway() {
+                if (gen != sessionGen) return
                 // Server warns the session is about to end (e.g. the ~10-15
                 // min limit): rotate gracefully on the main thread instead of
-                // waiting for the ugly abort.
+                // waiting for the ugly abort. The resumption handle is KEPT for
+                // this path, so the new session picks up the conversation.
                 if (manualStop) return
                 watchdogHandler.post {
                     if (manualStop) return@post
-                    if (lastUserSpeechAt > lastModelResponseAt && lastUserText.isNotBlank()) {
-                        resendText = lastUserText
-                        resendTextAt = System.currentTimeMillis()
-                    }
                     beginNewSession(savedApiKey ?: return@post)
                     _statusText.postValue("Session ka waqt khatam ho raha hai — baat yaad rakh kar dobara connect ho rahi hoon")
                 }
@@ -403,10 +441,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopSession() {
         // User tapped disconnect himself -> never auto-reconnect afterwards.
+        // Drop the resumption handle too: the next start is a clean session.
         manualStop = true
         reconnectScheduled = false
-        resendText = null
         sessionGen++
+        GeminiLiveClient.clearResumptionHandle()
         stopSessionInternal()
         _statusText.postValue("Idle")
     }
@@ -416,6 +455,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         CameraVision.sessionLive = false
         CameraVision.refresh(getApplication())
         CameraVision.onFrame = null
+        try {
+            sessionScope.cancel()
+        } catch (_: Exception) {
+        }
         try {
             audio?.stopCapture()
         } catch (_: Exception) {
@@ -435,6 +478,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         try {
             watchdogHandler.removeCallbacks(watchdogRunnable)
+        } catch (_: Exception) {
+        }
+        try {
+            nudgeHandler.removeCallbacksAndMessages(null)
+        } catch (_: Exception) {
+        }
+        try {
+            sessionScope.cancel()
         } catch (_: Exception) {
         }
         try {

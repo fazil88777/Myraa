@@ -50,6 +50,18 @@ class GeminiLiveClient(private val listener: Listener) {
             val h = resumptionHandle
             return if (!h.isNullOrBlank() && System.currentTimeMillis() - resumptionHandleAt < 8 * 60 * 1000) h else null
         }
+
+        /**
+         * Drops the saved handle so the next session starts clean. Call this on
+         * abnormal-death reconnects and manual stops — the dead session's handle
+         * is poisoned (the model never emits another turn on a resumed zombie).
+         * Do NOT call on the graceful onGoAway rotation: that path intentionally
+         * resumes the conversation via the saved handle.
+         */
+        fun clearResumptionHandle() {
+            resumptionHandle = null
+            resumptionHandleAt = 0L
+        }
     }
 
     private val client: OkHttpClient =
@@ -515,7 +527,9 @@ class GeminiLiveClient(private val listener: Listener) {
                 .put(
                     "sessionResumption",
                     // Resume previous conversation context when we have a fresh
-                    // handle (e.g. after a goAway rotation or an abnormal drop).
+                    // handle (kept only for the graceful goAway rotation).
+                    // Abnormal-death reconnects clear the handle first, so they
+                    // always start a clean session instead of a zombie resume.
                     // Empty object = just enable resumption for this session.
                     takeResumptionHandle()?.let { JSONObject().put("handle", it) } ?: JSONObject()
                 )

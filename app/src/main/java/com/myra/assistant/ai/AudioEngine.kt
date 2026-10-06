@@ -23,43 +23,45 @@ class AudioEngine {
     private val playQueue = ConcurrentLinkedQueue<ByteArray>()
     @Volatile private var playing = false
 
-    /** Start capturing microphone audio as 16kHz mono 16-bit PCM chunks. */
+    /**
+     * Start capturing microphone audio as 16kHz mono 16-bit PCM chunks.
+     * @throws IllegalStateException if the mic cannot be initialized — the
+     * caller (MainViewModel) surfaces it as "Mic error: ..." instead of
+     * sitting silent on a dead mic.
+     */
     fun startCapture(onChunk: (ByteArray) -> Unit) {
-        try {
-            val minBuf = AudioRecord.getMinBufferSize(
-                16000,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
-            )
-            val rec = AudioRecord(
-                      MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                16000,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                minBuf * 2
-            )
-            if (rec.state != AudioRecord.STATE_INITIALIZED) {
-                rec.release()
-                return
-            }
-            recorder = rec
-            rec.startRecording()
-            capturing = true
-            captureThread = Thread({
-                val buf = ByteArray(640) // 20ms @ 16kHz mono 16-bit
-                while (capturing) {
-                    try {
-                        val n = rec.read(buf, 0, buf.size)
-                        if (n > 0) {
-                            onChunk(buf.copyOf(n))
-                        }
-                    } catch (_: Exception) {
-                        break
-                    }
-                }
-            }, "myra-capture").also { it.start() }
-        } catch (_: Exception) {
+        val minBuf = AudioRecord.getMinBufferSize(
+            16000,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        val rec = AudioRecord(
+                  MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            16000,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            minBuf * 2
+        )
+        if (rec.state != AudioRecord.STATE_INITIALIZED) {
+            rec.release()
+            throw IllegalStateException("Mic on nahi ho saka — mic permission check karo")
         }
+        recorder = rec
+        rec.startRecording()
+        capturing = true
+        captureThread = Thread({
+            val buf = ByteArray(640) // 20ms @ 16kHz mono 16-bit
+            while (capturing) {
+                try {
+                    val n = rec.read(buf, 0, buf.size)
+                    if (n > 0) {
+                        onChunk(buf.copyOf(n))
+                    }
+                } catch (_: Exception) {
+                    break
+                }
+            }
+        }, "myra-capture").also { it.start() }
     }
 
     /** Stop capture and release the AudioRecord. */
