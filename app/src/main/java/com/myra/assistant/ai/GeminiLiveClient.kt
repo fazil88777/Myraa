@@ -521,6 +521,27 @@ class GeminiLiveClient(private val listener: Listener) {
                     listOf("idea", "minutes")
                 )
             )
+            fdArray.put(
+                functionDecl(
+                    "trading_class",
+                    "Fazil ki Binance spot/futures trading class: use awaz me point-by-point " +
+                            "parhao, jaise asli class. Jab user kahe 'trading class shuru karo' / " +
+                            "'trading seekhao' / 'class shuru karo' / 'start trading class' to " +
+                            "action=start call karo. Jab kahe 'class band karo' / 'class khatam' / " +
+                            "'stop class' to action=stop call karo. Tool jo point ya micro-step bhejta " +
+                            "hai, SIRF wahi parhao (apne alfaaz me, Roman Urdu me), phir poocho " +
+                            "'samajh aaya? koi sawal hai?' — agla point sirf action=next se lo. " +
+                            "Practical me ek waqt me SIRF EK micro-step do, phir get_screen_elements " +
+                            "se verify karo.",
+                    obj(
+                        "action" to strProp("'start' class shuru karne ke liye, 'stop' band karne ke liye, " +
+                                "'next' agla point/step, 'repeat' wohi dobara, 'goto' kisi lesson par jump"),
+                        "lesson" to intProp("goto ke liye lesson number 1-6 (optional)"),
+                        "point" to intProp("goto ke liye point number, 0 se (optional)")
+                    ),
+                    listOf("action")
+                )
+            )
 
             val setup = JSONObject()
                 .put("model", MODEL)
@@ -776,7 +797,9 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "tariqe se bolo — kabhi unhein spell-out mat karo. For example 'aaj' ko " +
                                         "'aaj' bolo ('A.J.' mat bolo), 'kya' ko 'kya' bolo ('K.Y.A.' mat bolo), " +
                                         "'kaise' ko 'kaise' bolo. English words normal English mein bolo. " +
-                                        "Be concise and conversational."
+                                        "Be concise and conversational. " +
+                                        TradingClassPrompt.classModeBlock() +
+                                        "Sometimes the user shares his phone screen with you: then you can SEE " +
                             )
                         )
                     )

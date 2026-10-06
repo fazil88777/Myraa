@@ -273,6 +273,12 @@ object ToolHandler {
                     args.optString("mode"),
                     context
                 )
+                "trading_class" -> TradingClassPrompt.handleAction(
+                    args.optString("action", "start"),
+                    args.optInt("lesson", 0),
+                    args.optInt("point", 0),
+                    context
+                )
                 else -> "ERROR: unknown tool $name"
             }
         } catch (e: Exception) {
