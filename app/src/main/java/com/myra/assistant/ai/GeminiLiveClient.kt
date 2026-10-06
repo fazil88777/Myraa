@@ -798,8 +798,7 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "'aaj' bolo ('A.J.' mat bolo), 'kya' ko 'kya' bolo ('K.Y.A.' mat bolo), " +
                                         "'kaise' ko 'kaise' bolo. English words normal English mein bolo. " +
                                         "Be concise and conversational. " +
-                                        TradingClassPrompt.classModeBlock() +
-                                        "Sometimes the user shares his phone screen with you: then you can SEE " +
+                                        TradingClassPrompt.classModeBlock()
                             )
                         )
                     )
