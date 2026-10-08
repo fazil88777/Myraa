@@ -84,6 +84,14 @@ class HotwordService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        // Full voice shutdown: never listen again until the user opens the app.
+        try {
+            if (com.myra.assistant.util.Prefs.fullyOff) {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+        } catch (_: Exception) {
+        }
         startForegroundWithNotification()
         running = true
         handler.post { listenOnce() }

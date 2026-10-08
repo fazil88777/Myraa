@@ -1,6 +1,7 @@
 package com.myra.assistant.ui
 
 import android.app.Application
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
@@ -10,8 +11,12 @@ import com.myra.assistant.ai.AudioEngine
 import com.myra.assistant.ai.CameraVision
 import com.myra.assistant.ai.GeminiLiveClient
 import com.myra.assistant.ai.ToolHandler
+import com.myra.assistant.ai.VoiceCodeLock
 import com.myra.assistant.data.ChatMessage
+import com.myra.assistant.service.FloatingOrbService
+import com.myra.assistant.service.HotwordService
 import com.myra.assistant.service.ScreenShareService
+import com.myra.assistant.util.Prefs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,14 +83,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // true — never while the model may still be generating, so the nudge's text
     // turn can't cancel a slow in-flight answer.
     private var toolTurnClosed = false
+    // --- voice code lock: every session starts locked; MYRA says "Code batao"
+    // first and only the code phrase unlocks normal operation. ---
+    private var codeLocked = false
+    private var wrongCodeAttempts = 0
+    // --- full voice shutdown ("myra off ho jao"): everything stays dead until
+    // the user manually opens the app again (which clears Prefs.fullyOff). ---
+    @Volatile
+    private var isFullyOff = false
+    private var fullyShuttingDown = false
 
     private val watchdogRunnable = object : Runnable {
         override fun run() {
             try {
-                checkSessionHealth()
+                if (!isFullyOff) checkSessionHealth()
             } catch (_: Exception) {
             }
-            watchdogHandler.postDelayed(this, 3_000)
+            // Fully off: never repost — zero background work until manual app open.
+            if (!isFullyOff) watchdogHandler.postDelayed(this, 3_000)
         }
     }
 
@@ -124,7 +139,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Reconnect automatically after an unexpected drop (never after a manual stop). */
     private fun scheduleReconnect() {
-        if (manualStop || reconnectScheduled) return
+        if (manualStop || reconnectScheduled || isFullyOff) return
         if (_isConnected.value == true) return
         autoReconnect()
     }
@@ -134,7 +149,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * is truly down, give up after 5 tries instead of looping forever.
      */
     private fun autoReconnect() {
-        if (manualStop || reconnectScheduled) return
+        if (manualStop || reconnectScheduled || isFullyOff) return
         val key = savedApiKey ?: return
         if (reconnectAttempts >= 5) {
             _statusText.postValue("Connection lost — net check karke dobara connect dabao")
@@ -209,10 +224,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startSession(apiKey: String) {
         if (_isConnected.value == true) return
+        // Fully off: only a manual app open clears this (see MainActivity).
+        if (isFullyOff || Prefs.fullyOff) {
+            _statusText.postValue("MYRA off hai — app dobara kholo taake on ho")
+            return
+        }
         savedApiKey = apiKey
         // Fresh user-initiated start: past reconnect failures don't count.
         reconnectAttempts = 0
         beginNewSession(apiKey)
+    }
+
+    /** Called by MainActivity on a manual app open: full shutdown is over. */
+    fun clearFullyOff() {
+        isFullyOff = false
     }
 
     /**
@@ -220,6 +245,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * manual stop). Used for both fresh starts and planned rotations.
      */
     private fun beginNewSession(apiKey: String) {
+        // Defensive: never start a session while fully off.
+        if (isFullyOff || Prefs.fullyOff) return
         stopSessionInternal()
         // Invalidate stale delayed callbacks (e.g. a pending autoReconnect
         // posted by the dying session's onClosed).
@@ -241,6 +268,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         lastVoiceActivityAt = 0L
         modelRespondedThisSession = false
         toolTurnClosed = false
+        codeLocked = false
+        wrongCodeAttempts = 0
         lastModelActivityAt = System.currentTimeMillis()
         lastModelResponseAt = System.currentTimeMillis()
         pendingInputMsgIndex = -1
@@ -261,6 +290,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
                 _statusText.postValue("Listening...")
+                // VOICE CODE LOCK: every session starts locked. MYRA asks for
+                // the code first; nothing else is honored until it verifies.
+                codeLocked = true
+                wrongCodeAttempts = 0
+                client?.sendText(
+                    "CODE LOCK shuru: abhi EXACT ye kaho aur kuch nahi: 'Code batao'. " +
+                            "Koi greeting mat karo, koi tool call mat karo. Jab tak main " +
+                            "'Code theek hai' na kahun, user ki kisi baat ka jawab mat do."
+                )
                 try {
                     engine.startCapture { chunk ->
                         // Voice-activity tracking for the half-dead-socket watchdog:
@@ -303,6 +341,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (gen != sessionGen) return
                 lastUserSpeechAt = System.currentTimeMillis()
                 lastUserText = text
+                // Shutdown command: top priority — works locked or unlocked.
+                if (VoiceCodeLock.isShutdownCommand(text)) {
+                    showInputTranscription(text)
+                    fullVoiceShutdown()
+                    return
+                }
+                // Code lock gate: while locked, only the code phrase is honored.
+                if (codeLocked) {
+                    showInputTranscription(text)
+                    handleCodeAttempt(text)
+                    return
+                }
                 showInputTranscription(text)
             }
 
@@ -318,6 +368,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onToolCall(id: String, name: String, argsJson: String) {
                 if (gen != sessionGen) return
+                // Code lock: no tools while locked — the session is gated.
+                if (codeLocked) return
                 lastModelResponseAt = System.currentTimeMillis()
                 modelRespondedThisSession = true
                 reconnectAttempts = 0
@@ -407,6 +459,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendTypedText(text: String) {
+        // Shutdown command works even from typed text.
+        if (VoiceCodeLock.isShutdownCommand(text)) {
+            addMessage(ChatMessage("user", text))
+            pendingInputMsgIndex = -1
+            fullVoiceShutdown()
+            return
+        }
+        // Code lock gate applies to typed text too.
+        if (codeLocked) {
+            addMessage(ChatMessage("user", text))
+            pendingInputMsgIndex = -1
+            handleCodeAttempt(text)
+            return
+        }
         addMessage(ChatMessage("user", text))
         pendingInputMsgIndex = -1
         lastUserSpeechAt = System.currentTimeMillis()
@@ -446,9 +512,127 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         manualStop = true
         reconnectScheduled = false
         sessionGen++
+        codeLocked = false
+        wrongCodeAttempts = 0
         GeminiLiveClient.clearResumptionHandle()
         stopSessionInternal()
         _statusText.postValue("Idle")
+    }
+
+    /**
+     * Voice code-lock attempt: the code phrase unlocks the session, anything
+     * else is rejected (3 wrong attempts end the session).
+     */
+    private fun handleCodeAttempt(text: String) {
+        if (VoiceCodeLock.isCodeMatch(text)) {
+            codeLocked = false
+            wrongCodeAttempts = 0
+            client?.sendText(
+                "Code theek hai. Ab EXACT ye do jumlay isi tarteeb me kaho, aur kuch nahi: " +
+                        "'Code success hua' — phir — 'Yes Fazil, main aapke liye kya karun?' " +
+                        "Uske baad normal kaam karo."
+            )
+            return
+        }
+        wrongCodeAttempts++
+        if (wrongCodeAttempts >= VoiceCodeLock.MAX_WRONG_ATTEMPTS) {
+            codeLocked = false
+            client?.sendText(
+                "Code 3 baar ghalat hua. Ab EXACT ye kaho aur kuch nahi: " +
+                        "'Theek hai Fazil, jab code yaad aaye to dobara on karna'. " +
+                        "Uske baad khamosh raho."
+            )
+            // Let the goodbye finish speaking, then end the session.
+            watchdogHandler.postDelayed({
+                try {
+                    stopSession()
+                } catch (_: Exception) {
+                }
+            }, 6000)
+        } else {
+            client?.sendText(
+                "Code ghalat hai. Ab EXACT ye kaho aur kuch nahi: " +
+                        "'Code galat hai, dobara batao'."
+            )
+        }
+    }
+
+    /**
+     * Full voice shutdown ("myra off ho jao"): MYRA says goodbye, then
+     * EVERYTHING is torn down and stays dead — no watchdog, no reconnect,
+     * no background services — until the user manually opens the app again.
+     */
+    private fun fullVoiceShutdown() {
+        if (fullyShuttingDown) return
+        fullyShuttingDown = true
+        codeLocked = false
+        client?.sendText(
+            "User ne kaha MYRA off ho jao. Ab EXACT ye kaho aur kuch nahi: " +
+                    "'Theek hai Fazil, main off ho rahi hoon'."
+        )
+        _statusText.postValue("Off ho rahi hoon...")
+        // Let the goodbye finish speaking, then kill everything.
+        watchdogHandler.postDelayed({
+            try {
+                doFullShutdown()
+            } catch (_: Exception) {
+            }
+        }, 7000)
+    }
+
+    private fun doFullShutdown() {
+        val app = getApplication<Application>()
+        // Persist FIRST: from here on, nothing may auto-restart.
+        try {
+            Prefs.fullyOff = true
+        } catch (_: Exception) {
+        }
+        isFullyOff = true
+        manualStop = true
+        reconnectScheduled = false
+        sessionGen++
+        fullyShuttingDown = false
+        try {
+            watchdogHandler.removeCallbacks(watchdogRunnable)
+        } catch (_: Exception) {
+        }
+        try {
+            nudgeHandler.removeCallbacksAndMessages(null)
+        } catch (_: Exception) {
+        }
+        try {
+            sessionScope.cancel()
+        } catch (_: Exception) {
+        }
+        stopSessionInternal()
+        // Stop anything that could wake MYRA back up: the hotword listener
+        // (it auto-opens the app), the floating orb, and screen sharing.
+        try {
+            app.startService(
+                Intent(app, HotwordService::class.java).setAction(HotwordService.ACTION_STOP)
+            )
+        } catch (_: Exception) {
+        }
+        try {
+            app.stopService(Intent(app, FloatingOrbService::class.java))
+        } catch (_: Exception) {
+        }
+        try {
+            app.stopService(Intent(app, ScreenShareService::class.java))
+        } catch (_: Exception) {
+        }
+        try {
+            setSharing(false)
+        } catch (_: Exception) {
+        }
+        try {
+            HotwordService.sessionActive = false
+        } catch (_: Exception) {
+        }
+        // Watchdog stays dead: watchdogStarted=false + the isFullyOff guard in
+        // the runnable mean zero background work from here on.
+        watchdogStarted = false
+        _statusText.postValue("Off")
     }
 
     /** Tear down audio + socket without marking a manual stop. */

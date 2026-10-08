@@ -128,4 +128,13 @@ object Prefs {
     var pcEnabled: Boolean
         get() = bool("pc_enabled", false)
         set(value) = putBool("pc_enabled", value)
+
+    /**
+     * Full voice shutdown: MYRA stays completely dead (no session, no
+     * watchdog, no auto-reconnect, no background restarts) until the user
+     * manually opens the app again, which clears this flag.
+     */
+    var fullyOff: Boolean
+        get() = bool("fully_off", false)
+        set(value) = putBool("fully_off", value)
 }

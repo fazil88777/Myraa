@@ -16,7 +16,8 @@ class BootReceiver : BroadcastReceiver() {
         val a = intent.action
         if (a == Intent.ACTION_BOOT_COMPLETED || a == "android.intent.action.QUICKBOOT_POWERON") {
             try {
-                if (Prefs.orbEnabled) {
+                // Full voice shutdown: stay dead after reboot until manual app open.
+                if (Prefs.orbEnabled && !Prefs.fullyOff) {
                     ContextCompat.startForegroundService(
                         context,
                         Intent(context, FloatingOrbService::class.java)

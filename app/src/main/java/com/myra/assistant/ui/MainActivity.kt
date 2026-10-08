@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.myra.assistant.R
 import com.myra.assistant.service.HotwordService
 import com.myra.assistant.service.ScreenShareService
+import com.myra.assistant.ai.VoiceCodeLock
 import com.myra.assistant.util.HotwordStore
 import com.myra.assistant.util.LiaStyle
 import com.myra.assistant.util.MyraBridge
@@ -75,6 +76,10 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
         MyraBridge.viewModel = viewModel
+
+        // Manual app open clears the full voice-shutdown flag — but NOT a
+        // hotword auto-open (that must stay dead until the user opens the app).
+        clearFullyOffIfManualOpen(intent)
 
         // Theme: grid tint
         findViewById<GridBackgroundView>(R.id.gridBg).gridColor =
@@ -178,7 +183,24 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        clearFullyOffIfManualOpen(intent)
         handleAutoConnect(intent)
+    }
+
+    /**
+     * Only a MANUAL app open clears the full-shutdown flag. A hotword
+     * auto-open (auto_connect=true) must not revive MYRA by itself.
+     */
+    private fun clearFullyOffIfManualOpen(intent: Intent?) {
+        if (intent?.getBooleanExtra("auto_connect", false) == true) return
+        try {
+            if (Prefs.fullyOff) {
+                Prefs.fullyOff = false
+                viewModel.clearFullyOff()
+                toast("MYRA on ho gayi")
+            }
+        } catch (_: Exception) {
+        }
     }
 
     /**
@@ -194,6 +216,11 @@ class MainActivity : AppCompatActivity() {
     /** Start a voice session if the API key is saved, else guide to Settings. */
     private fun ensureSession() {
         if (viewModel.isConnected.value == true) return
+        // Fully off: only a manual app open revives MYRA (handled above).
+        if (Prefs.fullyOff) {
+            toast("MYRA off hai — app dobara kholo taake on ho")
+            return
+        }
         val k = Prefs.apiKey
         if (k.isBlank()) {
             toast("Pehle Settings mein API key save karo")
