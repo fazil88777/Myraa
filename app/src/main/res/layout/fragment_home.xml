@@ -1,415 +1,97 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- LIA-style home: left pill menu, VIP particle orb, quick actions grid -->
+<!-- Nova-style home: looping video background, big rotating glow orb,
+     assistant name, bottom input bar. No tool grid. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Center column -->
+    <!-- Background video: clearly visible, loops silently -->
+    <VideoView
+        android:id="@+id/bgVideo"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center" />
+
+    <!-- Light dim so text stays readable while video stays clear -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#4D000000" />
+
+    <!-- Center: rotating orb + name -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:gravity="center_horizontal"
+        android:gravity="center"
         android:orientation="vertical"
-        android:paddingLeft="96dp"
-        android:paddingRight="12dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp">
+        android:paddingBottom="90dp">
 
         <com.myra.assistant.ui.ParticleOrbView
             android:id="@+id/particleOrb"
-            android:layout_width="220dp"
-            android:layout_height="220dp"
+            android:layout_width="230dp"
+            android:layout_height="230dp"
             android:clickable="true"
             android:focusable="true" />
-
-        <TextView
-            android:id="@+id/homeTitleText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:letterSpacing="0.14"
-            android:text="MYRA VOICE ASSISTANT"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/homeStatusPill"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/bg_pill"
-            android:paddingLeft="16dp"
-            android:paddingTop="7dp"
-            android:paddingRight="16dp"
-            android:paddingBottom="7dp"
-            android:text="● Idle"
-            android:textColor="#FFFFFF"
-            android:textSize="13sp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:letterSpacing="0.2"
-            android:text="QUICK ACTIONS"
-            android:textColor="@color/lia_muted"
-            android:textSize="11sp"
+            android:text="Myra AI"
+            android:textColor="#35C4FF"
+            android:textSize="24sp"
             android:textStyle="bold" />
 
-        <GridLayout
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:columnCount="3"
-            android:rowCount="2"
-            android:useDefaultMargins="true">
-
-            <LinearLayout
-                android:id="@+id/qaAsk"
-                android:layout_width="96dp"
-                android:layout_height="96dp"
-                android:background="@drawable/bg_pill"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🎙"
-                    android:textSize="26sp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Ask MYRA"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Voice &amp; Chat"
-                    android:textColor="@color/lia_muted"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/qaShare"
-                android:layout_width="96dp"
-                android:layout_height="96dp"
-                android:background="@drawable/bg_pill"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🖥"
-                    android:textSize="26sp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Share"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Screen"
-                    android:textColor="@color/lia_muted"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/qaReminder"
-                android:layout_width="96dp"
-                android:layout_height="96dp"
-                android:background="@drawable/bg_pill"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="⏰"
-                    android:textSize="26sp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Reminder"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Tasks &amp; more"
-                    android:textColor="@color/lia_muted"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/qaHotword"
-                android:layout_width="96dp"
-                android:layout_height="96dp"
-                android:background="@drawable/bg_pill"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="👂"
-                    android:textSize="26sp" />
-
-                <TextView
-                    android:id="@+id/qaHotwordTitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Hotword"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/qaHotwordSub"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="hi MYRA: OFF"
-                    android:textColor="@color/lia_muted"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/qaYoutube"
-                android:layout_width="96dp"
-                android:layout_height="96dp"
-                android:background="@drawable/bg_pill"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="▶"
-                    android:textSize="26sp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="YouTube"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Analyze"
-                    android:textColor="@color/lia_muted"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/qaMore"
-                android:layout_width="96dp"
-                android:layout_height="96dp"
-                android:background="@drawable/bg_pill"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="⋯"
-                    android:textSize="26sp"
-                    android:textColor="#FFFFFF" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="More"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Features"
-                    android:textColor="@color/lia_muted"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-        </GridLayout>
+            android:layout_marginTop="4dp"
+            android:text="Your AI Assistant"
+            android:textColor="#9FB3C8"
+            android:textSize="14sp" />
 
     </LinearLayout>
 
-    <!-- Left vertical pill menu -->
+    <!-- Bottom input bar -->
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="left|center_vertical"
-        android:layout_marginLeft="8dp"
-        android:orientation="vertical">
+        android:layout_gravity="bottom"
+        android:paddingLeft="20dp"
+        android:paddingRight="20dp"
+        android:paddingBottom="18dp">
 
         <LinearLayout
-            android:id="@+id/pillMemory"
-            android:layout_width="wrap_content"
+            android:id="@+id/inputBar"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:layout_marginBottom="6dp"
-            android:background="@drawable/bg_pill"
+            android:background="@drawable/bg_home_input"
             android:clickable="true"
             android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingLeft="10dp"
-            android:paddingTop="10dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="10dp">
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="🧠"
-                android:textSize="18sp" />
+                android:layout_weight="1"
+                android:paddingLeft="12dp"
+                android:text="How can I help you today?"
+                android:textColor="#9FB3C8"
+                android:textSize="15sp" />
 
             <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="MEMORY"
-                android:textColor="@color/lia_accent"
-                android:textSize="9sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+                android:id="@+id/inputMic"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_mic_circle"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="🎙"
+                android:textSize="22sp" />
 
-        <LinearLayout
-            android:id="@+id/pillChat"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:layout_marginBottom="6dp"
-            android:background="@drawable/bg_pill"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingLeft="10dp"
-            android:paddingTop="10dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="10dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="💬"
-                android:textSize="18sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="CHAT"
-                android:textColor="#FF9E4A"
-                android:textSize="9sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/pillSoul"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:layout_marginBottom="6dp"
-            android:background="@drawable/bg_pill"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingLeft="10dp"
-            android:paddingTop="10dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="10dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✨"
-                android:textSize="18sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="SOUL"
-                android:textColor="#B388FF"
-                android:textSize="9sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/pillSettings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:layout_marginBottom="6dp"
-            android:background="@drawable/bg_pill"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingLeft="10dp"
-            android:paddingTop="10dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="10dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚙"
-                android:textSize="18sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="SETTINGS"
-                android:textColor="#69F0AE"
-                android:textSize="9sp"
-                android:textStyle="bold" />
         </LinearLayout>
 
     </LinearLayout>
