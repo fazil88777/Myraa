@@ -5,10 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
@@ -19,10 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.myra.assistant.R
-import com.myra.assistant.service.HotwordService
 import com.myra.assistant.service.ScreenShareService
-import com.myra.assistant.ai.VoiceCodeLock
-import com.myra.assistant.util.HotwordStore
 import com.myra.assistant.util.LiaStyle
 import com.myra.assistant.util.MyraBridge
 import com.myra.assistant.util.PermissionHelper
@@ -77,8 +71,7 @@ class MainActivity : AppCompatActivity() {
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
         MyraBridge.viewModel = viewModel
 
-        // Manual app open clears the full voice-shutdown flag — but NOT a
-        // hotword auto-open (that must stay dead until the user opens the app).
+        // Manual app open clears the full voice-shutdown flag.
         clearFullyOffIfManualOpen(intent)
 
         // Theme: grid tint
@@ -124,50 +117,10 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        // ---- "hi MYRA" hotword wiring ----
-        viewModel.isConnected.observe(this) { connected ->
-            HotwordService.sessionActive = connected == true
-        }
         // Voice-controlled screen share: MYRA posts a request, we launch/stop capture.
         viewModel.screenShareRequest.observe(this) { on ->
             if (on != null) setScreenShare(on)
         }
-        if (HotwordStore.isEnabled(this) &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-            !Settings.canDrawOverlays(this)
-        ) {
-            try {
-                startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                )
-                toast("Hotword circle ke liye 'Display over other apps' ON kar dena")
-            } catch (_: Exception) {
-            }
-        }
-        if (HotwordStore.isEnabled(this)) {
-            try {
-                ContextCompat.startForegroundService(
-                    this,
-                    Intent(this, HotwordService::class.java)
-                        .setAction(HotwordService.ACTION_START)
-                )
-            } catch (_: Exception) {
-            }
-        }
-
-        // Auto Listening: app khulte hi sunna shuru
-        if (Prefs.autoListening && Prefs.apiKey.isNotBlank()) {
-            findViewById<View>(R.id.fragmentContainer).postDelayed({
-                if (viewModel.isConnected.value != true) {
-                    viewModel.startSession(Prefs.apiKey)
-                }
-            }, 1500)
-        }
-
-        handleAutoConnect(intent)
 
         val lastCrash = Prefs.lastCrash
         if (lastCrash.isNotEmpty()) {
@@ -184,15 +137,10 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         clearFullyOffIfManualOpen(intent)
-        handleAutoConnect(intent)
     }
 
-    /**
-     * Only a MANUAL app open clears the full-shutdown flag. A hotword
-     * auto-open (auto_connect=true) must not revive MYRA by itself.
-     */
+    /** A manual app open clears the full-shutdown flag. */
     private fun clearFullyOffIfManualOpen(intent: Intent?) {
-        if (intent?.getBooleanExtra("auto_connect", false) == true) return
         try {
             if (Prefs.fullyOff) {
                 Prefs.fullyOff = false
@@ -201,16 +149,6 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (_: Exception) {
         }
-    }
-
-    /**
-     * "hi MYRA" hotword trigger: open MYRA and start the full voice session
-     * by ourselves — same as opening the app and pressing Connect.
-     */
-    private fun handleAutoConnect(intent: Intent?) {
-        if (intent?.getBooleanExtra("auto_connect", false) != true) return
-        intent.removeExtra("auto_connect")
-        ensureSession()
     }
 
     /** Start a voice session if the API key is saved, else guide to Settings. */

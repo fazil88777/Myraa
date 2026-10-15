@@ -21,21 +21,6 @@ object LiaStyle {
 
     fun theme(key: String): Theme = THEMES.firstOrNull { it.key == key } ?: THEMES[0]
 
-    data class OrbColor(val key: String, val label: String, val color: Int)
-
-    val ORB_COLORS = listOf(
-        OrbColor("teal", "Teal", Color.parseColor("#2DD4A8")),
-        OrbColor("red", "Red", Color.parseColor("#FF5252")),
-        OrbColor("black", "Black", Color.parseColor("#C9CED6")),
-        OrbColor("pink", "Pink", Color.parseColor("#FF6FA5")),
-        OrbColor("green", "Green", Color.parseColor("#4ADE80")),
-        OrbColor("blue", "Blue", Color.parseColor("#4D7CFE")),
-        OrbColor("purple", "Purple", Color.parseColor("#B388FF")),
-        OrbColor("gold", "Gold", Color.parseColor("#FFC94D"))
-    )
-
-    fun orbColor(key: String): OrbColor = ORB_COLORS.firstOrNull { it.key == key } ?: ORB_COLORS[0]
-
     data class Personality(val key: String, val label: String)
 
     val PERSONALITIES = listOf(

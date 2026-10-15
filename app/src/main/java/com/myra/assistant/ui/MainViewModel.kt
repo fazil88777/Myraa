@@ -14,7 +14,6 @@ import com.myra.assistant.ai.ToolHandler
 import com.myra.assistant.ai.VoiceCodeLock
 import com.myra.assistant.data.ChatMessage
 import com.myra.assistant.service.FloatingOrbService
-import com.myra.assistant.service.HotwordService
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.Prefs
 import kotlinx.coroutines.CancellationException
@@ -83,10 +82,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // true — never while the model may still be generating, so the nudge's text
     // turn can't cancel a slow in-flight answer.
     private var toolTurnClosed = false
-    // --- voice code lock: every session starts locked; MYRA says "Code batao"
-    // first and only the code phrase unlocks normal operation. ---
-    private var codeLocked = false
-    private var wrongCodeAttempts = 0
     // --- full voice shutdown ("myra off ho jao"): everything stays dead until
     // the user manually opens the app again (which clears Prefs.fullyOff). ---
     @Volatile
@@ -268,8 +263,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         lastVoiceActivityAt = 0L
         modelRespondedThisSession = false
         toolTurnClosed = false
-        codeLocked = false
-        wrongCodeAttempts = 0
         lastModelActivityAt = System.currentTimeMillis()
         lastModelResponseAt = System.currentTimeMillis()
         pendingInputMsgIndex = -1
@@ -290,15 +283,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
                 _statusText.postValue("Listening...")
-                // VOICE CODE LOCK: every session starts locked. MYRA asks for
-                // the code first; nothing else is honored until it verifies.
-                codeLocked = true
-                wrongCodeAttempts = 0
-                client?.sendText(
-                    "CODE LOCK shuru: abhi EXACT ye kaho aur kuch nahi: 'Code batao'. " +
-                            "Koi greeting mat karo, koi tool call mat karo. Jab tak main " +
-                            "'Code theek hai' na kahun, user ki kisi baat ka jawab mat do."
-                )
                 try {
                     engine.startCapture { chunk ->
                         // Voice-activity tracking for the half-dead-socket watchdog:
@@ -341,16 +325,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (gen != sessionGen) return
                 lastUserSpeechAt = System.currentTimeMillis()
                 lastUserText = text
-                // Shutdown command: top priority — works locked or unlocked.
+                // Shutdown command: top priority — always honored.
                 if (VoiceCodeLock.isShutdownCommand(text)) {
                     showInputTranscription(text)
                     fullVoiceShutdown()
-                    return
-                }
-                // Code lock gate: while locked, only the code phrase is honored.
-                if (codeLocked) {
-                    showInputTranscription(text)
-                    handleCodeAttempt(text)
                     return
                 }
                 showInputTranscription(text)
@@ -368,8 +346,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onToolCall(id: String, name: String, argsJson: String) {
                 if (gen != sessionGen) return
-                // Code lock: no tools while locked — the session is gated.
-                if (codeLocked) return
                 lastModelResponseAt = System.currentTimeMillis()
                 modelRespondedThisSession = true
                 reconnectAttempts = 0
@@ -466,13 +442,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             fullVoiceShutdown()
             return
         }
-        // Code lock gate applies to typed text too.
-        if (codeLocked) {
-            addMessage(ChatMessage("user", text))
-            pendingInputMsgIndex = -1
-            handleCodeAttempt(text)
-            return
-        }
         addMessage(ChatMessage("user", text))
         pendingInputMsgIndex = -1
         lastUserSpeechAt = System.currentTimeMillis()
@@ -512,49 +481,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         manualStop = true
         reconnectScheduled = false
         sessionGen++
-        codeLocked = false
-        wrongCodeAttempts = 0
         GeminiLiveClient.clearResumptionHandle()
         stopSessionInternal()
         _statusText.postValue("Idle")
-    }
-
-    /**
-     * Voice code-lock attempt: the code phrase unlocks the session, anything
-     * else is rejected (3 wrong attempts end the session).
-     */
-    private fun handleCodeAttempt(text: String) {
-        if (VoiceCodeLock.isCodeMatch(text)) {
-            codeLocked = false
-            wrongCodeAttempts = 0
-            client?.sendText(
-                "Code theek hai. Ab EXACT ye do jumlay isi tarteeb me kaho, aur kuch nahi: " +
-                        "'Code success hua' — phir — 'Yes Fazil, main aapke liye kya karun?' " +
-                        "Uske baad normal kaam karo."
-            )
-            return
-        }
-        wrongCodeAttempts++
-        if (wrongCodeAttempts >= VoiceCodeLock.MAX_WRONG_ATTEMPTS) {
-            codeLocked = false
-            client?.sendText(
-                "Code 3 baar ghalat hua. Ab EXACT ye kaho aur kuch nahi: " +
-                        "'Theek hai Fazil, jab code yaad aaye to dobara on karna'. " +
-                        "Uske baad khamosh raho."
-            )
-            // Let the goodbye finish speaking, then end the session.
-            watchdogHandler.postDelayed({
-                try {
-                    stopSession()
-                } catch (_: Exception) {
-                }
-            }, 6000)
-        } else {
-            client?.sendText(
-                "Code ghalat hai. Ab EXACT ye kaho aur kuch nahi: " +
-                        "'Code galat hai, dobara batao'."
-            )
-        }
     }
 
     /**
@@ -565,7 +494,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun fullVoiceShutdown() {
         if (fullyShuttingDown) return
         fullyShuttingDown = true
-        codeLocked = false
         client?.sendText(
             "User ne kaha MYRA off ho jao. Ab EXACT ye kaho aur kuch nahi: " +
                     "'Theek hai Fazil, main off ho rahi hoon'."
@@ -605,14 +533,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Exception) {
         }
         stopSessionInternal()
-        // Stop anything that could wake MYRA back up: the hotword listener
-        // (it auto-opens the app), the floating orb, and screen sharing.
-        try {
-            app.startService(
-                Intent(app, HotwordService::class.java).setAction(HotwordService.ACTION_STOP)
-            )
-        } catch (_: Exception) {
-        }
+        // Stop anything that could wake MYRA back up: the floating orb
+        // and screen sharing.
         try {
             app.stopService(Intent(app, FloatingOrbService::class.java))
         } catch (_: Exception) {
@@ -623,10 +545,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         try {
             setSharing(false)
-        } catch (_: Exception) {
-        }
-        try {
-            HotwordService.sessionActive = false
         } catch (_: Exception) {
         }
         // Watchdog stays dead: watchdogStarted=false + the isFullyOff guard in

@@ -1,6 +1,5 @@
 package com.myra.assistant.ui
 
-import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -11,19 +10,13 @@ import android.widget.FrameLayout
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.common.api.ApiException
 import com.myra.assistant.R
 import com.myra.assistant.service.FloatingOrbService
-import com.myra.assistant.service.HotwordService
 import com.myra.assistant.service.PcLink
-import com.myra.assistant.util.AuthManager
-import com.myra.assistant.util.HotwordStore
 import com.myra.assistant.util.LiaStyle
 import com.myra.assistant.util.PermissionHelper
 import com.myra.assistant.util.Prefs
@@ -37,25 +30,6 @@ class SettingsFragment : Fragment() {
 
     private var updating = false
     private lateinit var vm: MainViewModel
-
-    private val googleLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode != Activity.RESULT_OK) {
-                toast("Login cancelled")
-                return@registerForActivityResult
-            }
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            try {
-                val account = task.getResult(ApiException::class.java)
-                if (Prefs.userName.isBlank() && !account.displayName.isNullOrBlank()) {
-                    Prefs.userName = account.displayName!!.trim()
-                }
-                refreshProfile()
-                toast("Login ho gaya! ✅")
-            } catch (e: ApiException) {
-                toast("Login failed (${e.statusCode})")
-            }
-        }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -78,9 +52,6 @@ class SettingsFragment : Fragment() {
                 toast("Name saved!")
             }
         }
-        // Tapping the profile card = Gmail login / logout
-        view.findViewById<View>(R.id.profileAvatar).setOnClickListener { googleAccountTap() }
-
         // ---- AI & VOICE ----
         view.findViewById<View>(R.id.rowApiKey).setOnClickListener {
             textDialog("Gemini API Key", Prefs.apiKey, "AI Studio se key paste karo") {
@@ -144,47 +115,11 @@ class SettingsFragment : Fragment() {
             }
         }
 
-        val swWake = view.findViewById<Switch>(R.id.switchWakeWord)
-        swWake.setOnCheckedChangeListener { _, on ->
-            if (updating) return@setOnCheckedChangeListener
-            setHotword(on)
-        }
-        val swAuto = view.findViewById<Switch>(R.id.switchAutoListening)
-        swAuto.setOnCheckedChangeListener { _, on ->
-            if (updating) return@setOnCheckedChangeListener
-            Prefs.autoListening = on
-            toast(if (on) "App khulte hi sunna shuru 👂" else "Auto Listening OFF")
-        }
-
         // ---- AI PROVIDER: connection status (live) ----
         vm.isConnected.observe(viewLifecycleOwner) { refreshConnStatus() }
         vm.statusText.observe(viewLifecycleOwner) { refreshConnStatus() }
 
         // ---- APPEARANCE ----
-        view.findViewById<View>(R.id.rowTheme).setOnClickListener {
-            val items = LiaStyle.THEMES
-            choiceDialog(
-                "Theme",
-                items.map { it.label },
-                items.indexOfFirst { it.key == Prefs.theme }.coerceAtLeast(0)
-            ) { which ->
-                Prefs.theme = items[which].key
-                refreshAll()
-                toast("${items[which].label} — dobara kholo to poora lagega 🎨")
-            }
-        }
-        view.findViewById<View>(R.id.rowOrbStyle).setOnClickListener {
-            val items = LiaStyle.ORB_COLORS
-            choiceDialog(
-                "Orb Style",
-                items.map { it.label },
-                items.indexOfFirst { it.key == Prefs.orbColor }.coerceAtLeast(0)
-            ) { which ->
-                Prefs.orbColor = items[which].key
-                refreshAll()
-                toast("Orb: ${items[which].label} — Home par dekho ✨")
-            }
-        }
         val swMotion = view.findViewById<Switch>(R.id.switchReducedMotion)
         swMotion.setOnCheckedChangeListener { _, on ->
             if (updating) return@setOnCheckedChangeListener
@@ -279,42 +214,11 @@ class SettingsFragment : Fragment() {
         refreshAll()
     }
 
-    private fun setHotword(on: Boolean) {
-        val ctx = requireContext()
-        HotwordStore.setEnabled(ctx, on)
-        try {
-            val i = Intent(ctx, HotwordService::class.java)
-            i.action = if (on) HotwordService.ACTION_START else HotwordService.ACTION_STOP
-            ContextCompat.startForegroundService(ctx, i)
-        } catch (_: Exception) {
-        }
-        toast(if (on) "Hotword ON — 'hi MYRA' bolo 👂" else "Hotword OFF")
-    }
-
-    private fun googleAccountTap() {
-        val account = AuthManager.signedInAccount(requireContext())
-        if (account != null) {
-            AlertDialog.Builder(requireContext())
-                .setTitle("Logout?")
-                .setMessage("Gmail se logout karna hai?")
-                .setPositiveButton("Logout") { _, _ ->
-                    AuthManager.signOut(requireContext()) { refreshProfile() }
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
-        } else {
-            googleLauncher.launch(AuthManager.client(requireContext()).signInIntent)
-        }
-    }
-
     private fun refreshProfile() {
         val v = view ?: return
-        val account = AuthManager.signedInAccount(requireContext())
         v.findViewById<TextView>(R.id.profileName).text =
-            Prefs.userName.ifBlank { account?.displayName ?: "Dost" }
-        v.findViewById<TextView>(R.id.profileEmail).text =
-            account?.email ?: "Tap avatar for Gmail login"
-        val first = (Prefs.userName.ifBlank { account?.displayName ?: "M" }).firstOrNull()
+            Prefs.userName.ifBlank { "Dost" }
+        val first = Prefs.userName.ifBlank { "M" }.firstOrNull()
         v.findViewById<TextView>(R.id.profileAvatar).text =
             first?.uppercaseChar()?.toString() ?: "M"
     }
@@ -344,13 +248,6 @@ class SettingsFragment : Fragment() {
                 LiaStyle.langLabel(Prefs.language)
             v.findViewById<TextView>(R.id.rowSpeechSpeedValue).text =
                 LiaStyle.speedLabel(Prefs.speechSpeed)
-            v.findViewById<Switch>(R.id.switchWakeWord).isChecked =
-                HotwordStore.isEnabled(requireContext())
-            v.findViewById<Switch>(R.id.switchAutoListening).isChecked = Prefs.autoListening
-            v.findViewById<TextView>(R.id.rowThemeValue).text =
-                LiaStyle.theme(Prefs.theme).label
-            v.findViewById<TextView>(R.id.rowOrbStyleValue).text =
-                LiaStyle.orbColor(Prefs.orbColor).label
             v.findViewById<Switch>(R.id.switchReducedMotion).isChecked = Prefs.reducedMotion
             v.findViewById<Switch>(R.id.switchMemory).isChecked = Prefs.memoryEnabled
             v.findViewById<Switch>(R.id.switchFloatingOrb).isChecked = Prefs.orbEnabled

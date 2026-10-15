@@ -197,16 +197,6 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
-                    "set_hotword",
-                    "Turn the background 'hi MYRA' hotword listener on or off. When ON, " +
-                            "the phone keeps listening in the background and MYRA wakes up by " +
-                            "herself when the user says 'hi MYRA', even if the app is closed.",
-                    obj("enabled" to boolProp("true to turn the hotword listener ON, false to turn it OFF")),
-                    listOf("enabled")
-                )
-            )
-            fdArray.put(
-                functionDecl(
                     "save_youtube_setup",
                     "Save the user's YouTube Data API key and/or channel handle for " +
                             "channel analytics. Call when the user dictates his key or handle.",
@@ -521,28 +511,6 @@ class GeminiLiveClient(private val listener: Listener) {
                     listOf("idea", "minutes")
                 )
             )
-            fdArray.put(
-                functionDecl(
-                    "trading_class",
-                    "Fazil ki Binance spot/futures trading class: use awaz me point-by-point " +
-                            "parhao, jaise asli class. Jab user kahe 'trading class shuru karo' / " +
-                            "'trading seekhao' / 'class shuru karo' / 'start trading class' to " +
-                            "action=start call karo. Jab kahe 'class band karo' / 'class khatam' / " +
-                            "'stop class' to action=stop call karo. Tool jo point ya micro-step bhejta " +
-                            "hai, SIRF wahi parhao (apne alfaaz me, Roman Urdu me), phir poocho " +
-                            "'samajh aaya? koi sawal hai?' — agla point sirf action=next se lo. " +
-                            "Practical me ek waqt me SIRF EK micro-step do, phir get_screen_elements " +
-                            "se verify karo.",
-                    obj(
-                        "action" to strProp("'start' class shuru karne ke liye, 'stop' band karne ke liye, " +
-                                "'next' agla point/step, 'repeat' wohi dobara, 'goto' kisi lesson par jump"),
-                        "lesson" to intProp("goto ke liye lesson number 1-6 (optional)"),
-                        "point" to intProp("goto ke liye point number, 0 se (optional)")
-                    ),
-                    listOf("action")
-                )
-            )
-
             val setup = JSONObject()
                 .put("model", MODEL)
                 .put(
@@ -626,11 +594,6 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "get_current_time, can_see_screen, get_screen_elements, schedule_message, " +
                                         "cancel_scheduled_message, list_scheduled_messages, flow_video, " +
                                         "get_crypto_price, set_screen_share, remember_fact. " +
-                                        "HOTWORD: you have a background 'hi MYRA' listener. If the user says " +
-                                        "'hotword on karo', call set_hotword with enabled=true and confirm " +
-                                        "'Ho gaya Fazil! Hotword on hai — ab jab bhi kaho ge hi MYRA, " +
-                                        "main khud jaag jaungi, app band ho tab bhi.' If he says 'hotword band " +
-                                        "karo', call it with enabled=false. " +
                                         "GREETING: every time a voice session starts, your very first line " +
                                         "is warm and friendly like a friend, e.g. 'Arre Fazil! Kya haal " +
                                         "hain? Batao, kya karun?' — then listen. " +
@@ -709,25 +672,7 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "SPEED: lambi taqreerein mat karo, har step par 5-7 lafzon ki confirmation, seedha tool chalao, ek step khatam " +
                                         "hote hi agla shuru karo. " +
                                         "FLOW VIDEO STUDIO khatam. " +
-                                        "TRADING USTAD: jab user trading seekhna chahe, tum uski ustad ho — " +
-                                        "samjhao, live example dikhao, sikhao. PEHLA USOOL: pro trader ka asal " +
-                                        "raaz prediction NAHI, risk management hai — har trade me 1-2% se zyada " +
-                                        "risk kabhi nahi. UP/DOWN PREDICTION SAKHT MANA HAI: kabhi mat kaho agle " +
-                                        "minute/hour me price up ya down jayegi — koi nahi jaan sakta, jo signal " +
-                                        "ka dawa kare wo jhoot bolta hai. Trend sikhao: uptrend = higher highs + " +
-                                        "higher lows. Support = jahan price baar baar ruk kar upar gayi (buyers " +
-                                        "mazboot); resistance = jahan ruk kar neeche aayi. Live example ke liye " +
-                                        "HAMESHA get_crypto_price se asli price lo. Pehle demo, phir real. " +
-                                        "QUOTEX MASTER: Quotex binary-options app hai — asset chuno, expiry " +
-                                        "(masalan 1 min), amount, phir Up/Down; jeeto to stake + payout%, haaro " +
-                                        "to stake gaya. Seekhne ke liye HAMESHA pehle DEMO account (free virtual " +
-                                        "$10,000) — wahan trade kar ke dikhao. User kahe 'Quotex kholo' to " +
-                                        "open_app se kholo, phir get_screen_elements se screen parho: DEMO dikhe " +
-                                        "to theek, REAL dikhe to khabardar karo ke asal paise lag rahe hain. " +
-                                        "Asset/timeframe/amount uske lafzon se tools se set karo, lekin REAL-money " +
-                                        "trade ka AAKHRI confirm tap HAMESHA wohi karega — tum khud real trade " +
-                                        "confirm kabhi mat karo. Har tap par PROOF RULE laagu hai. " +
-                                        "Do EXACTLY what the user says, step by step, the way he says it — " +
+                                                                                "Do EXACTLY what the user says, step by step, the way he says it — " +
                                         "never improvise a different plan or skip his steps. " +
                                         "When he asks you to do something on the phone, ALWAYS use the tools " +
                                         "instead of saying you cannot. Never refuse a phone task; just do it step " +
@@ -797,9 +742,7 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "tariqe se bolo — kabhi unhein spell-out mat karo. For example 'aaj' ko " +
                                         "'aaj' bolo ('A.J.' mat bolo), 'kya' ko 'kya' bolo ('K.Y.A.' mat bolo), " +
                                         "'kaise' ko 'kaise' bolo. English words normal English mein bolo. " +
-                                        "Be concise and conversational. " +
-                                        TradingClassPrompt.classModeBlock() +
-                                        VoiceCodeLock.lockPromptBlock()
+                                        "Be concise and conversational. "
                             )
                         )
                     )

@@ -99,20 +99,10 @@ object Prefs {
         get() = float("speech_speed", 1.0f)
         set(value) = putFloat("speech_speed", value)
 
-    /** Start listening automatically when the app opens. */
-    var autoListening: Boolean
-        get() = bool("auto_listening", false)
-        set(value) = putBool("auto_listening", value)
-
     /** Dark theme: teal, midnight, crimson, violet, rose, black. */
     var theme: String
         get() = str("lia_theme", "teal")
         set(value) = putStr("lia_theme", value)
-
-    /** Orb color: teal, red, black, pink, green, blue, purple, gold. */
-    var orbColor: String
-        get() = str("orb_color", "teal")
-        set(value) = putStr("orb_color", value)
 
     /** Reduce ambient animations. */
     var reducedMotion: Boolean

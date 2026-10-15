@@ -9,12 +9,9 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.telecom.TelecomManager
 import android.telephony.SmsManager
-import androidx.core.content.ContextCompat
-import com.myra.assistant.service.HotwordService
 import com.myra.assistant.service.MyraAccessibilityService
 import com.myra.assistant.service.ScheduledMessageReceiver
 import com.myra.assistant.service.ScreenShareService
-import com.myra.assistant.util.HotwordStore
 import com.myra.assistant.util.ScheduledStore
 import com.myra.assistant.util.YouTubeStore
 import okhttp3.OkHttpClient
@@ -67,28 +64,6 @@ object ToolHandler {
                     CameraVision.setEnabled(context, on)
                     if (on) "OK: camera access ON — front camera vision active while the voice session is live"
                     else "OK: camera access OFF — camera closed"
-                }
-                "set_hotword" -> {
-                    val on = args.optBoolean("enabled", true)
-                    HotwordStore.setEnabled(context, on)
-                    try {
-                        if (on) {
-                            ContextCompat.startForegroundService(
-                                context,
-                                Intent(context, HotwordService::class.java)
-                                    .setAction(HotwordService.ACTION_START)
-                            )
-                            "OK: hotword ON — ab 'hi MYRA' bolne pe main khud jaag jaungi, app band ho tab bhi"
-                        } else {
-                            context.startService(
-                                Intent(context, HotwordService::class.java)
-                                    .setAction(HotwordService.ACTION_STOP)
-                            )
-                            "OK: hotword OFF — ab background me nahi sunungi"
-                        }
-                    } catch (_: Exception) {
-                        "ERROR: hotword service start nahi hui"
-                    }
                 }
                 "save_youtube_setup" -> {
                     val key = args.optString("api_key").trim()
@@ -271,12 +246,6 @@ object ToolHandler {
                     args.optString("idea"),
                     args.optString("minutes"),
                     args.optString("mode"),
-                    context
-                )
-                "trading_class" -> TradingClassPrompt.handleAction(
-                    args.optString("action", "start"),
-                    args.optInt("lesson", 0),
-                    args.optInt("point", 0),
                     context
                 )
                 else -> "ERROR: unknown tool $name"
