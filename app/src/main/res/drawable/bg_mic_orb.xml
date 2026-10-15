@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Big glowing mic orb: bright blue center to purple edge (reference-style). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <gradient
+        android:type="radial"
+        android:gradientRadius="64dp"
+        android:startColor="#9FDCFF"
+        android:centerColor="#4F8DEF"
+        android:endColor="#7B61FF" />
+</shape>
