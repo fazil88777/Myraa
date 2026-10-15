@@ -70,13 +70,15 @@ object MyraMemory {
         }
     }
 
-    /** First-run seeds so she knows the basics from day one. Never overwrites. */
+    /** First-run seeds so she knows the basics from day one. Never overwrites.
+     *  White-label: only the owner's name from Settings is seeded. Personal
+     *  facts (channel, family, trading) are learned fresh per owner through
+     *  conversation instead of shipping Fazil's. Existing installs keep
+     *  their saved facts untouched (this runs only on empty memory). */
     private fun seedIfEmpty() {
         if (allFacts().isNotEmpty()) return
-        addFact("Naam: Fazil")
-        addFact("Fazil YouTube par drama videos banata hai — uska channel BATTO STORY hai")
-        addFact("Fazil ke betay hain")
-        addFact("Fazil trading seekh raha hai — BTC me dilchaspi hai, Quotex ka demo account istemal karta hai")
+        val name = com.myra.assistant.util.Prefs.userName.ifBlank { "Dost" }
+        addFact("Naam: $name")
     }
 
     // ---------- Tasks + session recap (myra_brain.json, private files dir) ----------

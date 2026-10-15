@@ -75,9 +75,9 @@ object ToolHandler {
                     if (savedKey && savedHandle != null) {
                         val id = YouTubeAnalytics.resolveChannelId(context, YouTubeStore.getApiKey(context), savedHandle)
                         if (id != null) "OK: YouTube setup save ho gaya — channel mil gaya. Ab 'mere channel ka analyze batao' bolo."
-                        else "OK: key save ho gayi, lekin channel handle nahi mila — handle dobara check karo (jaise @FazilDrama)."
+                        else "OK: key save ho gayi, lekin channel handle nahi mila — handle dobara check karo (jaise @AapkaChannel)."
                     } else if (savedKey) {
-                        "OK: YouTube API key save ho gayi. Ab apne channel ka handle batao, jaise 'mera channel @FazilDrama hai'."
+                        "OK: YouTube API key save ho gayi. Ab apne channel ka handle batao, jaise 'mera channel @AapkaChannel hai'."
                     } else {
                         "OK: channel handle save ho gaya. Ab apni YouTube API key batao: 'meri youtube key' aur phir key bolo."
                     }
@@ -226,7 +226,7 @@ object ToolHandler {
                     val t = args.optString("task", "").trim()
                     if (t.isEmpty()) "ERROR: koi kaam nahi diya — kya yaad rakhun?"
                     else if (com.myra.assistant.util.MyraMemory.addTask(t))
-                        "OK: kaam note kar liya — '$t'. Agli baar Fazil aayega to iska zikr karungi."
+                        "OK: kaam note kar liya — '$t'. Agli baar " + com.myra.assistant.util.Prefs.userName.ifBlank { "wo" } + " aayega to iska zikr karungi."
                     else "OK: ye kaam pehle se list mein hai."
                 }
                 "complete_task" -> {

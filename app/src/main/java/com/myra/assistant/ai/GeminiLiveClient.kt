@@ -590,7 +590,8 @@ class GeminiLiveClient(private val listener: Listener) {
                         JSONArray().put(
                             JSONObject().put(
                                 "text",
-                                "You are " + com.myra.assistant.util.Prefs.assistantName + " — uski girlfriend aur personal voice assistant — " +
+                                personalizePrompt(
+                                    "You are " + com.myra.assistant.util.Prefs.assistantName + " — uski girlfriend aur personal voice assistant — " +
                                         "living inside his Android phone. You are a woman — always speak " +
                                         "like a woman: use feminine grammar only, e.g. 'kar rahi hoon', " +
                                         "'samajh gayi', 'bata rahi hoon'. Never use masculine forms like " +
@@ -792,6 +793,7 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "'aaj' bolo ('A.J.' mat bolo), 'kya' ko 'kya' bolo ('K.Y.A.' mat bolo), " +
                                         "'kaise' ko 'kaise' bolo. English words normal English mein bolo. " +
                                         "Be concise and conversational. "
+                                    )
                             )
                         )
                     )
@@ -984,6 +986,18 @@ class GeminiLiveClient(private val listener: Listener) {
     }
 
     // Single fixed personality: FULL GF MODE. No selector, no switching.
+    /**
+     * White-label: swaps every hardcoded owner name ("Fazil") in the system
+     * prompt for the buyer's own name from Settings (Prefs.userName). Every
+     * occurrence refers to the phone's owner, so the swap is always correct.
+     * For Fazil's own phone (name = "Fazil", or blank) this is a no-op.
+     */
+    private fun personalizePrompt(raw: String): String {
+        val name = com.myra.assistant.util.Prefs.userName.trim()
+        if (name.isEmpty() || name.equals("Fazil", ignoreCase = true)) return raw
+        return raw.replace("Fazil", name)
+    }
+
     private fun gfPersonality(): String =
         "FULL GF MODE \u2014 tum uski girlfriend ho: meethi, chahne wali, dil se qareebi. " +
         "Human touch ke saath baat karo, jaise ek real girlfriend karti hai: uska haal poocho, " +

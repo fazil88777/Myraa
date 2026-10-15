@@ -562,7 +562,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fullyShuttingDown = true
         client?.sendText(
             "User ne kaha MYRA off ho jao. Ab EXACT ye kaho aur kuch nahi: " +
-                    "'Theek hai Fazil, main off ho rahi hoon'."
+                    "'Theek hai " + Prefs.userName.ifBlank { "Dost" } + ", main off ho rahi hoon'."
         )
         _statusText.postValue("Off ho rahi hoon...")
         // Let the goodbye finish speaking, then kill everything.

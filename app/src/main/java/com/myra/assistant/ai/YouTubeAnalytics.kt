@@ -89,7 +89,7 @@ object YouTubeAnalytics {
             val handle = YouTubeStore.getHandle(context)
             if (handle.isBlank()) {
                 return "ERROR: channel ka handle nahi pata — user se uske YouTube channel " +
-                        "ka handle pucho (jaise @FazilDrama)."
+                        "ka handle pucho (jaise @AapkaChannel)."
             }
             channelId = resolveChannelId(context, apiKey, handle)
                 ?: return "ERROR: '$handle' naam ka channel nahi mila — handle check karo."
