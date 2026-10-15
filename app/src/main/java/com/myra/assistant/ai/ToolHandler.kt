@@ -222,6 +222,27 @@ object ToolHandler {
                         "OK: yaad kar liya — '$f'. Ab ye baat kabhi nahi bhoolungi."
                     else "OK: ye baat pehle se yaad hai."
                 }
+                "add_task" -> {
+                    val t = args.optString("task", "").trim()
+                    if (t.isEmpty()) "ERROR: koi kaam nahi diya — kya yaad rakhun?"
+                    else if (com.myra.assistant.util.MyraMemory.addTask(t))
+                        "OK: kaam note kar liya — '$t'. Agli baar Fazil aayega to iska zikr karungi."
+                    else "OK: ye kaam pehle se list mein hai."
+                }
+                "complete_task" -> {
+                    val t = args.optString("task", "").trim()
+                    if (t.isEmpty()) "ERROR: kaun sa kaam poora hua?"
+                    else if (com.myra.assistant.util.MyraMemory.completeTask(t))
+                        "OK: kaam poora mark kar diya."
+                    else "OK: aisa koi pending kaam nahi mila."
+                }
+                "save_recap" -> {
+                    val r = args.optString("recap", "").trim()
+                    if (r.isEmpty()) "ERROR: khulasa khaali hai."
+                    else if (com.myra.assistant.util.MyraMemory.saveRecap(r))
+                        "OK: session ka khulasa save ho gaya — agli baar yaad rahega."
+                    else "ERROR: save nahi ho saka."
+                }
                 "web_search" -> webSearch(args.optString("query"))
                 "read_webpage" -> readWebpage(args.optString("url"))
                 "open_website" -> openWebsite(args.optString("url"), context)

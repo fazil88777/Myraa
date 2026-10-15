@@ -4,7 +4,7 @@ import android.graphics.Color
 
 /**
  * Central style maps for the LIA-style interface:
- * themes (background + accent), orb colors, personalities, voices, languages.
+ * themes (background + accent), voices, languages.
  */
 object LiaStyle {
 
@@ -20,19 +20,6 @@ object LiaStyle {
     )
 
     fun theme(key: String): Theme = THEMES.firstOrNull { it.key == key } ?: THEMES[0]
-
-    data class Personality(val key: String, val label: String)
-
-    val PERSONALITIES = listOf(
-        Personality("friendly", "Friendly"),
-        Personality("gf", "GF Mode"),
-        Personality("boss", "Boss Mode"),
-        Personality("funny", "Funny"),
-        Personality("calm", "Calm")
-    )
-
-    fun personalityLabel(key: String): String =
-        PERSONALITIES.firstOrNull { it.key == key }?.label ?: "Friendly"
 
     data class Voice(val key: String, val label: String)
 

@@ -79,11 +79,6 @@ object Prefs {
         get() = str("assistant_name", "MYRA")
         set(value) = putStr("assistant_name", value)
 
-    /** Personality: friendly, gf, boss, funny, calm. */
-    var personality: String
-        get() = str("personality", "friendly")
-        set(value) = putStr("personality", value)
-
     /** Gemini Live voice: Sulafat, Aoede, Kore, Puck. */
     var voiceName: String
         get() = str("voice_name", "Sulafat")

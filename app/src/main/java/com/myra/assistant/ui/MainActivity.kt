@@ -222,7 +222,7 @@ class MainActivity : AppCompatActivity() {
 
     fun isVoiceLive(): Boolean = viewModel.isConnected.value == true
 
-    /** Restart the live session so a changed personality/voice/speed takes effect at once. */
+    /** Restart the live session so a changed voice/speed takes effect at once. */
     fun restartVoiceSession() {
         try {
             viewModel.stopSession()

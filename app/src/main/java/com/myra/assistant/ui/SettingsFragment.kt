@@ -67,18 +67,6 @@ class SettingsFragment : Fragment() {
                 toast("Assistant ka naam: ${Prefs.assistantName}")
             }
         }
-        view.findViewById<View>(R.id.rowPersonality).setOnClickListener {
-            val items = LiaStyle.PERSONALITIES
-            choiceDialog(
-                "Personality",
-                items.map { it.label },
-                items.indexOfFirst { it.key == Prefs.personality }.coerceAtLeast(0)
-            ) { which ->
-                Prefs.personality = items[which].key
-                refreshAll()
-                applyVoiceSettingNow("${items[which].label} select ho gayi")
-            }
-        }
         view.findViewById<View>(R.id.rowVoice).setOnClickListener {
             val items = LiaStyle.VOICES
             choiceDialog(
@@ -240,8 +228,6 @@ class SettingsFragment : Fragment() {
                 if (Prefs.apiKey.isBlank()) "Not set" else "•••••• saved"
             v.findViewById<TextView>(R.id.rowAssistantNameValue).text =
                 Prefs.assistantName.ifBlank { "MYRA" }
-            v.findViewById<TextView>(R.id.rowPersonalityValue).text =
-                LiaStyle.personalityLabel(Prefs.personality)
             v.findViewById<TextView>(R.id.rowVoiceValue).text =
                 LiaStyle.voiceLabel(Prefs.voiceName)
             v.findViewById<TextView>(R.id.rowLanguageValue).text =
@@ -306,7 +292,7 @@ class SettingsFragment : Fragment() {
         Toast.makeText(requireContext(), s, Toast.LENGTH_SHORT).show()
 
     /**
-     * After a personality/voice/speed change: if a voice session is live, restart it
+     * After a voice/speed change: if a voice session is live, restart it
      * so the new setting applies at once; otherwise it applies on the next session.
      */
     private fun applyVoiceSettingNow(msg: String) {
