@@ -4,9 +4,11 @@ import android.app.Application
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.speech.tts.TextToSpeech
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import java.util.Locale
 import com.myra.assistant.ai.AudioEngine
 import com.myra.assistant.ai.CameraVision
 import com.myra.assistant.ai.GeminiLiveClient
@@ -58,6 +60,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var lastModelResponseAt = 0L
     private var pendingInputMsgIndex = -1
     private var watchdogStarted = false
+
+    // --- deterministic welcome voice on user-initiated connect ---
+    // The model doesn't always volunteer its greeting, so the app itself
+    // speaks "Welcome to Myra Assistant" exactly once per manual start
+    // (never on auto-reconnects). Mic capture starts after the welcome
+    // finishes so the model doesn't hear it as user speech.
+    private var speakWelcomeOnConnect = false
+    private var tts: TextToSpeech? = null
     // Silence-fix state: auto-reconnect when the socket dies, and detect a
     // "half-dead" socket (mic hears the user, but no transcription ever arrives).
     private var manualStop = false
@@ -227,6 +237,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         savedApiKey = apiKey
         // Fresh user-initiated start: past reconnect failures don't count.
         reconnectAttempts = 0
+        // User pressed the button: announce the welcome voice on connect.
+        speakWelcomeOnConnect = true
         beginNewSession(apiKey)
     }
 
@@ -283,19 +295,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
                 _statusText.postValue("Listening...")
-                try {
-                    engine.startCapture { chunk ->
-                        // Voice-activity tracking for the half-dead-socket watchdog:
-                        // ignore mic energy right after the model spoke (echo).
-                        if (isLoud(chunk) &&
-                            System.currentTimeMillis() - lastModelResponseAt > 3000
-                        ) {
-                            lastVoiceActivityAt = System.currentTimeMillis()
+                val beginCapture: () -> Unit = {
+                    try {
+                        engine.startCapture { chunk ->
+                            // Voice-activity tracking for the half-dead-socket watchdog:
+                            // ignore mic energy right after the model spoke (echo).
+                            if (isLoud(chunk) &&
+                                System.currentTimeMillis() - lastModelResponseAt > 3000
+                            ) {
+                                lastVoiceActivityAt = System.currentTimeMillis()
+                            }
+                            client?.sendAudio(chunk)
                         }
-                        client?.sendAudio(chunk)
+                    } catch (e: Exception) {
+                        _statusText.postValue("Mic error: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    _statusText.postValue("Mic error: ${e.message}")
+                }
+                if (speakWelcomeOnConnect) {
+                    speakWelcomeOnConnect = false
+                    speakWelcomeThen(beginCapture)
+                } else {
+                    beginCapture()
                 }
             }
 
@@ -475,6 +495,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _messages.value = emptyList()
     }
 
+    /**
+     * Speaks "Welcome to Myra Assistant" through the phone's own voice engine
+     * (guaranteed to play — the AI model doesn't always volunteer a greeting),
+     * then runs [after] once the welcome has finished so the mic never picks
+     * it up as user speech.
+     */
+    private fun speakWelcomeThen(after: () -> Unit) {
+        val ui = Handler(Looper.getMainLooper())
+        try {
+            val existing = tts
+            if (existing != null) {
+                // Engine already warm: speak right away.
+                existing.speak(
+                    "Welcome to Myra Assistant",
+                    TextToSpeech.QUEUE_FLUSH, null, "myra_welcome"
+                )
+                ui.postDelayed({ after() }, 2600)
+            } else {
+                tts = TextToSpeech(getApplication<Application>()) { status ->
+                    if (status == TextToSpeech.SUCCESS) {
+                        tts?.language = Locale.US
+                        pickFemaleVoice()
+                        tts?.speak(
+                            "Welcome to Myra Assistant",
+                            TextToSpeech.QUEUE_FLUSH, null, "myra_welcome"
+                        )
+                    }
+                    ui.postDelayed({ after() }, 2600)
+                }
+            }
+        } catch (_: Exception) {
+            after()
+        }
+    }
+
+    /** Prefers a female English TTS voice when the phone offers one. */
+    private fun pickFemaleVoice() {
+        try {
+            val v = tts?.voices
+                ?.firstOrNull { it.locale.language == "en" && it.name.contains("female", true) }
+                ?: tts?.voices?.firstOrNull { it.locale.language == "en" }
+            v?.let { tts?.voice = it }
+        } catch (_: Exception) {
+        }
+    }
+
     fun stopSession() {
         // User tapped disconnect himself -> never auto-reconnect afterwards.
         // Drop the resumption handle too: the next start is a clean session.
@@ -558,6 +624,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         CameraVision.sessionLive = false
         CameraVision.refresh(getApplication())
         CameraVision.onFrame = null
+        try {
+            tts?.stop()
+        } catch (_: Exception) {
+        }
         try {
             sessionScope.cancel()
         } catch (_: Exception) {

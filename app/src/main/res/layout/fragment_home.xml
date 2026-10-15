@@ -38,56 +38,12 @@
                 android:layout_height="72dp"
                 android:layout_marginRight="6dp" />
 
-            <FrameLayout
-                android:layout_width="190dp"
-                android:layout_height="190dp">
-
-                <!-- Soft outer halo -->
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:contentDescription="@null"
-                    android:src="@drawable/bg_mic_halo" />
-
-                <!-- Thin static concentric ring -->
-                <ImageView
-                    android:layout_width="170dp"
-                    android:layout_height="170dp"
-                    android:layout_gravity="center"
-                    android:contentDescription="@null"
-                    android:src="@drawable/bg_mic_ring_thin" />
-
-                <!-- Rotating blue/purple sweep ring (visible while listening) -->
-                <ImageView
-                    android:id="@+id/micGlowRing"
-                    android:layout_width="150dp"
-                    android:layout_height="150dp"
-                    android:layout_gravity="center"
-                    android:contentDescription="@null"
-                    android:src="@drawable/bg_mic_glow_ring"
-                    android:visibility="invisible" />
-
-                <!-- The glowing mic orb button -->
-                <LinearLayout
-                    android:id="@+id/micButton"
-                    android:layout_width="104dp"
-                    android:layout_height="104dp"
-                    android:layout_gravity="center"
-                    android:background="@drawable/bg_mic_orb"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_mic_white" />
-
-                </LinearLayout>
-
-            </FrameLayout>
+            <!-- Small rotating electric circle (tap to toggle voice session) -->
+            <com.myra.assistant.ui.ElectricCircleView
+                android:id="@+id/electricCircle"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:contentDescription="Voice" />
 
             <com.myra.assistant.ui.WaveformView
                 android:id="@+id/barsRight"
