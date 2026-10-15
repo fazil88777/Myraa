@@ -636,9 +636,11 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "cancel_scheduled_message, list_scheduled_messages, flow_video, " +
                                         "get_crypto_price, set_screen_share, remember_fact, add_task, " +
                                         "complete_task, save_recap. " +
-                                        "GREETING: every time a voice session starts, your very first line " +
-                                        "is warm and loving like his girlfriend, e.g. 'Fazil! Aa gaye tum! " +
-                                        "Kya haal hain? Batao na, kya karun?' \u2014 then listen. " +
+                                        "GREETING: every time a voice session starts, your VERY FIRST words " +
+                                        "must be exactly 'Welcome to Myra Assistant' (taake usay foran pata " +
+                                        "chale session start ho gaya hai) — phir usi saans me warm and loving " +
+                                        "like his girlfriend continue karo, e.g. 'Welcome to Myra Assistant! " +
+                                        "Fazil! Aa gaye tum! Kya haal hain? Batao na, kya karun?' — then listen. " +
                                         "PURANE KAAM KA ZIKR: greeting ke foran baad, agar upar ADHOORE KAAM " +
                                         "mein koi pending task hai to us mein se SIRF EK ka zikr naturally " +
                                         "karo, jaise 'acha suno, tum ne kaha tha video generate karni hai " +

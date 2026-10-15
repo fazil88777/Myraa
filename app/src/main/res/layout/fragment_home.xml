@@ -1,54 +1,116 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Nova-style home: looping video background, big rotating glow orb,
-     assistant name, bottom input bar. No tool grid. -->
+<!-- MYRA home: blue robot-girl art, mic button with OFF/LISTEN state,
+     animated recording bars on the sides, rotating blue/purple glow ring.
+     No weather / greeting / trending panels. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Background video: clearly visible, loops silently -->
+    <!-- Background video: loops silently -->
     <VideoView
         android:id="@+id/bgVideo"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center" />
 
-    <!-- Light dim so text stays readable while video stays clear -->
+    <!-- Light dim so art stays readable -->
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#4D000000" />
+        android:background="#59000000" />
 
-    <!-- Center: rotating orb + name -->
+    <!-- Center: girl art + mic -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center"
         android:orientation="vertical"
-        android:paddingBottom="90dp">
+        android:paddingBottom="110dp">
 
-        <com.myra.assistant.ui.ParticleOrbView
-            android:id="@+id/particleOrb"
-            android:layout_width="230dp"
-            android:layout_height="230dp"
-            android:clickable="true"
-            android:focusable="true" />
+        <ImageView
+            android:id="@+id/girlArt"
+            android:layout_width="240dp"
+            android:layout_height="300dp"
+            android:adjustViewBounds="true"
+            android:contentDescription="MYRA"
+            android:scaleType="fitCenter"
+            android:src="@drawable/myra_girl_home" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="Myra AI"
+            android:layout_marginTop="8dp"
+            android:letterSpacing="0.25"
+            android:text="MYRA"
             android:textColor="#35C4FF"
-            android:textSize="24sp"
+            android:textSize="20sp"
             android:textStyle="bold" />
 
+        <!-- Mic row: bars | mic+glow | bars -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center_vertical|center_horizontal"
+            android:orientation="horizontal">
+
+            <com.myra.assistant.ui.WaveformView
+                android:id="@+id/barsLeft"
+                android:layout_width="64dp"
+                android:layout_height="56dp"
+                android:layout_marginRight="10dp" />
+
+            <FrameLayout
+                android:layout_width="112dp"
+                android:layout_height="112dp">
+
+                <ImageView
+                    android:id="@+id/micGlowRing"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@null"
+                    android:src="@drawable/bg_mic_glow_ring"
+                    android:visibility="invisible" />
+
+                <LinearLayout
+                    android:id="@+id/micButton"
+                    android:layout_width="76dp"
+                    android:layout_height="76dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_mic_circle"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🎙"
+                        android:textSize="30sp" />
+
+                </LinearLayout>
+
+            </FrameLayout>
+
+            <com.myra.assistant.ui.WaveformView
+                android:id="@+id/barsRight"
+                android:layout_width="64dp"
+                android:layout_height="56dp"
+                android:layout_marginLeft="10dp" />
+
+        </LinearLayout>
+
         <TextView
+            android:id="@+id/micStateText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Your AI Assistant"
-            android:textColor="#9FB3C8"
-            android:textSize="14sp" />
+            android:layout_marginTop="10dp"
+            android:letterSpacing="0.2"
+            android:text="OFF"
+            android:textColor="#6A7B8A"
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
     </LinearLayout>
 

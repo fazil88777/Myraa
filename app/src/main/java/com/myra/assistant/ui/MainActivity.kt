@@ -25,7 +25,7 @@ import java.util.Calendar
 
 /**
  * LIA-style host: grid background, header (sync | title | mic),
- * tab container, bottom navigation (Home / Chat / Voice / History / Settings).
+ * tab container, bottom navigation (Home / Chat / AI / Tools / Profile).
  * All voice/session logic lives in the shared MainViewModel.
  */
 class MainActivity : AppCompatActivity() {
@@ -99,8 +99,8 @@ class MainActivity : AppCompatActivity() {
             ensureSession()
             selectTab("home")
         }
-        findViewById<View>(R.id.navHistory).setOnClickListener { selectTab("history") }
-        findViewById<View>(R.id.navSettings).setOnClickListener { selectTab("settings") }
+        findViewById<View>(R.id.navHistory).setOnClickListener { selectTab("tools") }
+        findViewById<View>(R.id.navSettings).setOnClickListener { selectTab("profile") }
 
         if (savedInstanceState == null) selectTab("home")
 
@@ -183,9 +183,8 @@ class MainActivity : AppCompatActivity() {
     fun selectTab(tab: String) {
         val frag: Fragment = when (tab) {
             "chat" -> ChatFragment()
-            "history" -> HistoryFragment()
-            "settings" -> SettingsFragment()
-            "features" -> FeaturesFragment()
+            "tools" -> FeaturesFragment()
+            "profile" -> SettingsFragment()
             else -> HomeFragment()
         }
         supportFragmentManager.beginTransaction()
@@ -200,9 +199,9 @@ class MainActivity : AppCompatActivity() {
         val ids = mapOf(
             "home" to Pair(R.id.navHomeIcon, R.id.navHomeLabel),
             "chat" to Pair(R.id.navChatIcon, R.id.navChatLabel),
-            "voice" to Pair(R.id.navVoiceIcon, R.id.navVoiceLabel),
-            "history" to Pair(R.id.navHistoryIcon, R.id.navHistoryLabel),
-            "settings" to Pair(R.id.navSettingsIcon, R.id.navSettingsLabel)
+            "ai" to Pair(R.id.navVoiceIcon, R.id.navVoiceLabel),
+            "tools" to Pair(R.id.navHistoryIcon, R.id.navHistoryLabel),
+            "profile" to Pair(R.id.navSettingsIcon, R.id.navSettingsLabel)
         )
         ids.forEach { (key, pair) ->
             val color = if (key == tab) active else idle

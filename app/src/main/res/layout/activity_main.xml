@@ -85,7 +85,7 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <!-- Bottom navigation: Home / Chat / Voice / History / Settings -->
+        <!-- Bottom navigation: Home / Chat / AI / Tools / Profile -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -158,15 +158,16 @@
                     android:id="@+id/navVoiceIcon"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🎙"
-                    android:textSize="24sp" />
+                    android:text="✨"
+                    android:textSize="32sp" />
 
                 <TextView
                     android:id="@+id/navVoiceLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Voice"
-                    android:textSize="11sp" />
+                    android:text="AI"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <LinearLayout
@@ -183,14 +184,14 @@
                     android:id="@+id/navHistoryIcon"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="◷"
+                    android:text="🧰"
                     android:textSize="24sp" />
 
                 <TextView
                     android:id="@+id/navHistoryLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="History"
+                    android:text="Tools"
                     android:textSize="11sp" />
             </LinearLayout>
 
@@ -208,14 +209,14 @@
                     android:id="@+id/navSettingsIcon"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="⚙"
+                    android:text="👤"
                     android:textSize="24sp" />
 
                 <TextView
                     android:id="@+id/navSettingsLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Settings"
+                    android:text="Profile"
                     android:textSize="11sp" />
             </LinearLayout>
 

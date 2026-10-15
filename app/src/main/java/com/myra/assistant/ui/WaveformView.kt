@@ -19,6 +19,13 @@ class WaveformView @JvmOverloads constructor(
 
     private val amplitudes = ArrayDeque<Float>()
 
+    var barColor: Int = 0xFF03DAC5.toInt()
+        set(value) {
+            field = value
+            paint.color = value
+            invalidate()
+        }
+
     fun pushAmplitude(a: Float) {
         amplitudes.addLast(a)
         while (amplitudes.size > 40) {

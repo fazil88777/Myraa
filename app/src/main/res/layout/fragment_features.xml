@@ -12,7 +12,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Features"
+            android:text="Tools"
             android:textColor="#FFFFFF"
             android:textSize="22sp"
             android:textStyle="bold" />
@@ -30,6 +30,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:id="@+id/cardVoice"
             android:background="@drawable/bg_pill"
             android:orientation="vertical"
             android:padding="16dp">
@@ -55,6 +58,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:id="@+id/cardScreen"
             android:background="@drawable/bg_pill"
             android:orientation="vertical"
             android:padding="16dp">
@@ -80,6 +86,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:id="@+id/cardPhone"
             android:background="@drawable/bg_pill"
             android:orientation="vertical"
             android:padding="16dp">
@@ -105,6 +114,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:id="@+id/cardCalls"
             android:background="@drawable/bg_pill"
             android:orientation="vertical"
             android:padding="16dp">
@@ -130,6 +142,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:id="@+id/cardCamera"
             android:background="@drawable/bg_pill"
             android:orientation="vertical"
             android:padding="16dp">
@@ -146,7 +161,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="Coming soon — MYRA tumhein camera se dekh sakegi."
+                android:text="Voice session me kaho &quot;camera on karo&quot; — MYRA dekhne lagegi."
                 android:textColor="#9A9AC0"
                 android:textSize="13sp" />
         </LinearLayout>
@@ -155,6 +170,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:id="@+id/cardScheduled"
             android:background="@drawable/bg_pill"
             android:orientation="vertical"
             android:padding="16dp">
@@ -171,7 +189,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="Coming soon — waqt par khud kaam karne wali MYRA."
+                android:text="MYRA se kaho &quot;X ko [time] par ye bhej dena&quot; — wo khud bhej degi."
                 android:textColor="#9A9AC0"
                 android:textSize="13sp" />
         </LinearLayout>
