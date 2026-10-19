@@ -16,6 +16,7 @@
 
         <!-- Header -->
         <LinearLayout
+            android:id="@+id/headerBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
@@ -87,6 +88,7 @@
 
         <!-- Bottom navigation: Home / Chat / AI / Tools / Profile -->
         <LinearLayout
+            android:id="@+id/bottomNav"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="#CC05080D"

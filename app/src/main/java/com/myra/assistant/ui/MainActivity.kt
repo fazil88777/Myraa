@@ -162,7 +162,7 @@ class MainActivity : AppCompatActivity() {
         val k = Prefs.apiKey
         if (k.isBlank()) {
             toast("Pehle Settings mein API key save karo")
-            selectTab("settings")
+            selectTab("profile")
         } else {
             viewModel.startSession(k)
         }
@@ -190,6 +190,14 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .replace(R.id.fragmentContainer, frag)
             .commit()
+        // Minimal home themes (11/12/13/14) are mockup-exact: no header, no
+        // bottom nav. Dashboard theme (#2) and every other tab keep them.
+        // (On minimal home, long-press the electric circle for Chat/Tools/Profile.)
+        val minimalHome = tab == "home" && Prefs.homeDesign != "2"
+        findViewById<View>(R.id.headerBar)?.visibility =
+            if (minimalHome) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.bottomNav)?.visibility =
+            if (minimalHome) View.GONE else View.VISIBLE
         paintNav(tab)
     }
 

@@ -26,6 +26,24 @@ class ElectricCircleView @JvmOverloads constructor(
     /** True while a voice session is live: faster spin, brighter arcs. */
     var active: Boolean = false
 
+    /**
+     * Glow tint, set per home-design theme by HomeFragment
+     * (magenta/purple for #14, red/green/amber for #11/#12/#13,
+     * electric blue default). Applies on the next draw.
+     */
+    var glowTint: Int = 0xFF35C4FF.toInt()
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    private fun lighten(color: Int, f: Float): Int {
+        val a = (color ushr 24) and 0xFF
+        fun ch(v: Int) = (v + ((255 - v) * f)).toInt().coerceIn(0, 255)
+        return (a shl 24) or (ch((color shr 16) and 0xFF) shl 16) or
+                (ch((color shr 8) and 0xFF) shl 8) or ch(color and 0xFF)
+    }
+
     private var angle = 0f
     private var running = false
     private val handler = Handler(Looper.getMainLooper())
@@ -78,21 +96,21 @@ class ElectricCircleView @JvmOverloads constructor(
         if (cx <= 0f || cy <= 0f) return
         val r = min(cx, cy) * 0.70f
 
-        // Faint base ring.
+        // Faint base ring, tinted to the theme color.
         paint.setShadowLayer(0f, 0f, 0f, 0)
         paint.strokeWidth = 2.5f
-        paint.color = 0x3535C4FF
+        paint.color = (0x35 shl 24) or (glowTint and 0x00FFFFFF)
         canvas.drawCircle(cx, cy, r, paint)
 
         // Electric glow for the arcs.
-        val glowColor = if (active) 0xFF35C4FF.toInt() else 0xFF2E9BD6.toInt()
+        val glowColor = if (active) lighten(glowTint, 0.2f) else glowTint
         paint.setShadowLayer(14f, 0f, 0f, glowColor)
 
         // Three crackling arc segments, slightly offset radii for a live feel.
         val arcColors = intArrayOf(
-            0xFF9FDCFF.toInt(),
-            0xFF35C4FF.toInt(),
-            0xFFE6C2FF.toInt()
+            lighten(glowTint, 0.55f),
+            glowTint,
+            lighten(glowTint, 0.8f)
         )
         for (i in 0..2) {
             val rr = r + (if (i % 2 == 0) 3f else -3f)

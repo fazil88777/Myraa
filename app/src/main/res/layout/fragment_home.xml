@@ -1,77 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MYRA home (reference-style): clean dark background, big blue girl art,
-     large glowing mic orb with concentric rings, OFF/LISTEN state,
-     animated recording bars on the sides. No video bg, no input bar. -->
+<!-- MYRA home (minimal theme: designs 11/12/13/14): full-screen girl art with
+     slow breathing animation, drifting smoke overlay, ONE electric circle at
+     knee height with OFF/LISTEN beneath it. Nothing else on screen —
+     long-press the circle for Chat / Tools / Profile. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_home_dark">
+    android:background="#FF05070D">
 
-    <LinearLayout
+    <!-- Full-screen girl art ("breathing" scale applied in code) -->
+    <ImageView
+        android:id="@+id/girlArtFull"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:paddingBottom="70dp">
+        android:contentDescription="MYRA"
+        android:scaleType="centerCrop" />
 
-        <!-- Blue girl art -->
-        <ImageView
-            android:id="@+id/girlArt"
-            android:layout_width="250dp"
-            android:layout_height="330dp"
-            android:adjustViewBounds="true"
-            android:contentDescription="MYRA"
-            android:scaleType="fitCenter"
-            android:src="@drawable/myra_girl_home" />
+    <!-- Slow drifting smoke overlay (procedural, tinted per theme) -->
+    <com.myra.assistant.ui.SmokeDriftView
+        android:id="@+id/smokeView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
-        <!-- Mic row: bars | glowing mic | bars -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="center_vertical|center_horizontal"
-            android:orientation="horizontal">
+    <!-- Electric circle at knee height (~78% down) + OFF/LISTEN -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="90dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
 
-            <com.myra.assistant.ui.WaveformView
-                android:id="@+id/barsLeft"
-                android:layout_width="56dp"
-                android:layout_height="72dp"
-                android:layout_marginRight="6dp" />
+        <com.myra.assistant.ui.ElectricCircleView
+            android:id="@+id/electricCircle"
+            android:layout_width="170dp"
+            android:layout_height="170dp"
+            android:contentDescription="Voice" />
 
-            <!-- Small rotating electric circle (tap to toggle voice session) -->
-            <com.myra.assistant.ui.ElectricCircleView
-                android:id="@+id/electricCircle"
-                android:layout_width="120dp"
-                android:layout_height="120dp"
-                android:contentDescription="Voice" />
-
-            <com.myra.assistant.ui.WaveformView
-                android:id="@+id/barsRight"
-                android:layout_width="56dp"
-                android:layout_height="72dp"
-                android:layout_marginLeft="6dp" />
-
-        </LinearLayout>
-
-        <!-- Mic state -->
         <TextView
             android:id="@+id/micStateText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:letterSpacing="0.2"
+            android:layout_marginTop="10dp"
+            android:letterSpacing="0.25"
             android:text="OFF"
-            android:textColor="#6A7B8A"
-            android:textSize="14sp"
+            android:textColor="#8A97A5"
+            android:textSize="15sp"
             android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="Tap to speak"
-            android:textColor="#4A5A6A"
-            android:textSize="12sp" />
 
     </LinearLayout>
 
