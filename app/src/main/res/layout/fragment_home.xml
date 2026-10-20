@@ -2,13 +2,25 @@
 <!-- MYRA home (minimal theme: designs 11/12/13/14): full-screen girl art with
      slow breathing animation, drifting smoke overlay, ONE electric circle at
      knee height with OFF/LISTEN beneath it. Nothing else on screen —
-     long-press the circle for Chat / Tools / Profile. -->
+     long-press the circle for Chat / Tools / Profile.
+     Design 14 is special: its background is Fazil's animated looping video
+     (home_bg_14) on the TextureView; the still art stays on top as the
+     poster/fallback until the first video frame renders, and the native
+     breathing + smoke stay OFF for that theme (the clip moves on its own). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#FF05070D">
 
-    <!-- Full-screen girl art ("breathing" scale applied in code) -->
+    <!-- Looping background video (design 14 only; hidden for other themes) -->
+    <TextureView
+        android:id="@+id/bgVideo"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <!-- Full-screen girl art ("breathing" scale applied in code).
+         For design 14 this is the poster/fallback still for the video. -->
     <ImageView
         android:id="@+id/girlArtFull"
         android:layout_width="match_parent"
