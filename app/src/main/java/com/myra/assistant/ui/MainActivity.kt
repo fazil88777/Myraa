@@ -184,20 +184,21 @@ class MainActivity : AppCompatActivity() {
         val frag: Fragment = when (tab) {
             "chat" -> ChatFragment()
             "tools" -> FeaturesFragment()
+            "memory" -> MemoryFragment()
             "profile" -> SettingsFragment()
             else -> HomeFragment()
         }
         supportFragmentManager.beginTransaction()
             .replace(R.id.fragmentContainer, frag)
             .commit()
-        // Minimal home themes (11/12/13/14) are mockup-exact: no header, no
-        // bottom nav. Dashboard theme (#2) and every other tab keep them.
-        // (On minimal home, long-press the electric circle for Chat/Tools/Profile.)
-        val minimalHome = tab == "home" && Prefs.homeDesign != "2"
+        // The dashboard home is a full-screen design with its own header
+        // and dot-nav, so the activity header + bottom nav hide on it.
+        // Every other tab keeps them.
+        val dashboardHome = tab == "home"
         findViewById<View>(R.id.headerBar)?.visibility =
-            if (minimalHome) View.GONE else View.VISIBLE
+            if (dashboardHome) View.GONE else View.VISIBLE
         findViewById<View>(R.id.bottomNav)?.visibility =
-            if (minimalHome) View.GONE else View.VISIBLE
+            if (dashboardHome) View.GONE else View.VISIBLE
         paintNav(tab)
     }
 
@@ -238,7 +239,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Called by HomeFragment's Screen Share quick action. */
+    /** Called by FeaturesFragment's Screen Share quick action. */
     fun toggleScreenShare() {
         setScreenShare(!(viewModel.isSharing.value == true))
     }

@@ -2,14 +2,11 @@ package com.myra.assistant.ui
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -115,9 +112,6 @@ class SettingsFragment : Fragment() {
         swMotion.setOnCheckedChangeListener { _, on ->
             if (updating) return@setOnCheckedChangeListener
             Prefs.reducedMotion = on
-        }
-        view.findViewById<View>(R.id.rowHomeDesign).setOnClickListener {
-            showDesignPicker()
         }
 
         // ---- CONVERSATION & MEMORY ----
@@ -241,8 +235,6 @@ class SettingsFragment : Fragment() {
             v.findViewById<TextView>(R.id.rowSpeechSpeedValue).text =
                 LiaStyle.speedLabel(Prefs.speechSpeed)
             v.findViewById<Switch>(R.id.switchReducedMotion).isChecked = Prefs.reducedMotion
-            v.findViewById<TextView>(R.id.rowHomeDesignValue).text =
-                homeDesignLabel(Prefs.homeDesign)
             v.findViewById<Switch>(R.id.switchMemory).isChecked = Prefs.memoryEnabled
             v.findViewById<Switch>(R.id.switchFloatingOrb).isChecked = Prefs.orbEnabled
             refreshConnStatus()
@@ -261,67 +253,6 @@ class SettingsFragment : Fragment() {
             text = if (ok) "ON ✓" else "OFF ✗"
             setTextColor(if (ok) 0xFF69F0AE.toInt() else 0xFFFF8A80.toInt())
         }
-    }
-
-    private fun homeDesignLabel(key: String): String = when (key) {
-        "13" -> "Amber Villain"
-        "12" -> "Green Villain"
-        "11" -> "Red Villain"
-        "2" -> "Girl Dashboard"
-        else -> "Magenta Villain"
-    }
-
-    /** Home Design picker: 5 thumbnails, persisted in Prefs.homeDesign. */
-    private fun showDesignPicker() {
-        val ctx = requireContext()
-        val designs = listOf(
-            Triple("14", "Magenta Villain", R.drawable.home_design_14),
-            Triple("13", "Amber Villain", R.drawable.home_design_13),
-            Triple("12", "Green Villain", R.drawable.home_design_12),
-            Triple("11", "Red Villain", R.drawable.home_design_11),
-            Triple("2", "Girl Dashboard", R.drawable.home_design_2)
-        )
-        val current = Prefs.homeDesign
-        val list = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 24, 40, 24)
-        }
-        val dlg = AlertDialog.Builder(ctx)
-            .setTitle("Home Design")
-            .setView(list)
-            .setNegativeButton("Cancel", null)
-            .create()
-        designs.forEach { (key, label, art) ->
-            val row = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(8, 14, 8, 14)
-                isClickable = true
-                isFocusable = true
-            }
-            val thumb = ImageView(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(150, 200).apply {
-                    marginEnd = 28
-                }
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                setImageResource(art)
-            }
-            val tv = TextView(ctx).apply {
-                text = if (key == current) "$label  ✓" else label
-                textSize = 15f
-                setTextColor(0xFFFFFFFF.toInt())
-            }
-            row.addView(thumb)
-            row.addView(tv)
-            row.setOnClickListener {
-                Prefs.homeDesign = key
-                refreshAll()
-                dlg.dismiss()
-                toast("Home design: $label ✨")
-            }
-            list.addView(row)
-        }
-        dlg.show()
     }
 
     private fun choiceDialog(

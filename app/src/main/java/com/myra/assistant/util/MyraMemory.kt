@@ -177,6 +177,9 @@ object MyraMemory {
         return true
     }
 
+    /** Read-only accessor for the Memory screen. */
+    fun lastRecapText(): String = lastRecap()
+
     private fun lastRecap(): String =
         if (!::appContext.isInitialized) ""
         else try {

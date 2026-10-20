@@ -1,65 +1,496 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MYRA home (minimal theme: designs 11/12/13/14): full-screen girl art with
-     slow breathing animation, drifting smoke overlay, ONE electric circle at
-     knee height with OFF/LISTEN beneath it. Nothing else on screen —
-     long-press the circle for Chat / Tools / Profile.
-     Design 14 is special: its background is Fazil's animated looping video
-     (home_bg_14) on the TextureView; the still art stays on top as the
-     poster/fallback until the first video frame renders, and the native
-     breathing + smoke stay OFF for that theme (the clip moves on its own). -->
+<!-- MYRA home — sci-fi dashboard: spark-orbit header, pills + reactor orb
+     with light beams, Intelligence Brief + System cards, dot bottom nav,
+     rainbow neon border. Full screen, dark bg #060A12. MainActivity hides
+     its own header + bottom nav on this screen (it has its own nav). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF05070D">
+    android:background="#060A12">
 
-    <!-- Looping background video (design 14 only; hidden for other themes) -->
-    <TextureView
-        android:id="@+id/bgVideo"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone" />
-
-    <!-- Full-screen girl art ("breathing" scale applied in code).
-         For design 14 this is the poster/fallback still for the video. -->
-    <ImageView
-        android:id="@+id/girlArtFull"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:contentDescription="MYRA"
-        android:scaleType="centerCrop" />
-
-    <!-- Slow drifting smoke overlay (procedural, tinted per theme) -->
-    <com.myra.assistant.ui.SmokeDriftView
-        android:id="@+id/smokeView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-
-    <!-- Electric circle at knee height (~78% down) + OFF/LISTEN -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:layout_marginBottom="90dp"
-        android:gravity="center_horizontal"
+        android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <com.myra.assistant.ui.ElectricCircleView
-            android:id="@+id/electricCircle"
-            android:layout_width="170dp"
-            android:layout_height="170dp"
-            android:contentDescription="Voice" />
+        <!-- Header: MYRA + AI Assistant, sparks orbit the letters -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="118dp">
 
-        <TextView
-            android:id="@+id/micStateText"
-            android:layout_width="wrap_content"
+            <com.myra.assistant.ui.SparkOrbitView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:letterSpacing="0.2"
+                    android:shadowColor="#00E5FF"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="14"
+                    android:text="MYRA"
+                    android:textColor="#F0F5FA"
+                    android:textSize="34sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="AI Assistant"
+                    android:textColor="#788C9B"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- Middle stage: pills (left) + reactor (right) + beams -->
+        <RelativeLayout
+            android:id="@+id/middleZone"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <com.myra.assistant.ui.BeamsView
+                android:id="@+id/beamsView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <LinearLayout
+                android:id="@+id/pillsCol"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:layout_marginStart="14dp"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/pillMemory"
+                    android:layout_width="152dp"
+                    android:layout_height="52dp"
+                    android:layout_marginBottom="10dp"
+                    android:background="@drawable/pill_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="14dp">
+
+                    <View
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:background="@drawable/dot_circle"
+                        android:backgroundTint="#3C8CFF" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:text="MEMORY"
+                        android:textColor="#FFFFFF"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/pillChat"
+                    android:layout_width="152dp"
+                    android:layout_height="52dp"
+                    android:layout_marginBottom="10dp"
+                    android:background="@drawable/pill_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="14dp">
+
+                    <View
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:background="@drawable/dot_circle"
+                        android:backgroundTint="#FF9632" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:text="CHAT"
+                        android:textColor="#FFFFFF"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/pillTools"
+                    android:layout_width="152dp"
+                    android:layout_height="52dp"
+                    android:layout_marginBottom="10dp"
+                    android:background="@drawable/pill_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="14dp">
+
+                    <View
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:background="@drawable/dot_circle"
+                        android:backgroundTint="#AAB4BE" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:text="TOOLS"
+                        android:textColor="#FFFFFF"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/pillSettings"
+                    android:layout_width="152dp"
+                    android:layout_height="52dp"
+                    android:background="@drawable/pill_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="14dp">
+
+                    <View
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:background="@drawable/dot_circle"
+                        android:backgroundTint="#50DC82" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:text="SETTINGS"
+                        android:textColor="#FFFFFF"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <com.myra.assistant.ui.ReactorView
+                android:id="@+id/reactorView"
+                android:layout_width="205dp"
+                android:layout_height="205dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:layout_marginEnd="18dp"
+                android:contentDescription="Voice" />
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignEnd="@id/reactorView"
+                android:layout_alignStart="@id/reactorView"
+                android:layout_below="@id/reactorView"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:text="ready"
+                android:textColor="#00E5FF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/cameraBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignEnd="@id/statusText"
+                android:layout_alignStart="@id/statusText"
+                android:layout_below="@id/statusText"
+                android:layout_marginTop="8dp"
+                android:background="#141B28"
+                android:text="📷 Camera: OFF"
+                android:textColor="#2E9BFF"
+                android:textSize="12sp" />
+        </RelativeLayout>
+
+        <!-- Lower cards -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:letterSpacing="0.25"
-            android:text="OFF"
-            android:textColor="#8A97A5"
-            android:textSize="15sp"
-            android:textStyle="bold" />
+            android:layout_margin="12dp"
+            android:orientation="horizontal">
 
+            <LinearLayout
+                android:id="@+id/briefCard"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/card_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="INTELLIGENCE BRIEF"
+                    android:textColor="#788C9B"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/briefDate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="Today"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/briefTasks"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="📝 —"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/briefMore"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="+ MORE"
+                    android:textColor="#00E5FF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/card_bg"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="SYSTEM"
+                        android:textColor="#788C9B"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Running"
+                        android:textColor="#00FF9D"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/sysVoiceState"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="● Voice ready"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/sysMemoryState"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="● Memory active"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#23374B" />
+
+        <!-- Bottom dot-nav: Home / Chat / Voice / Memory / Tools / Settings -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="10dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:id="@+id/navHome"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <View
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/nav_dot_active" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Home"
+                    android:textColor="#00E5FF"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/navChat"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <View
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/nav_dot" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Chat"
+                    android:textColor="#788C9B"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/navVoice"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <View
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/nav_dot_active" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Voice"
+                    android:textColor="#00E5FF"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/navMemory"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <View
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/nav_dot" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Memory"
+                    android:textColor="#788C9B"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/navTools"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <View
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/nav_dot" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Tools"
+                    android:textColor="#788C9B"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/navSettings"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <View
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/nav_dot" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Settings"
+                    android:textColor="#788C9B"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
 
+    <!-- Rainbow neon border (topmost, never blocks touches) -->
+    <com.myra.assistant.ui.NeonBorderView
+        android:id="@+id/neonBorder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false" />
 </FrameLayout>

@@ -122,13 +122,4 @@ object Prefs {
     var fullyOff: Boolean
         get() = bool("fully_off", false)
         set(value) = putBool("fully_off", value)
-
-    /**
-     * Home design: "14" (magenta villain, default), "13" (amber villain),
-     * "12" (green villain), "11" (red villain), "2" (girl dashboard).
-     * Picked in Settings → Appearance → Home Design.
-     */
-    var homeDesign: String
-        get() = str("home_design", "14")
-        set(value) = putStr("home_design", value)
 }

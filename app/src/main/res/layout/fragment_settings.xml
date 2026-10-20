@@ -347,35 +347,6 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/rowHomeDesign"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/bg_pill"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:padding="14dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Home Design"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/rowHomeDesignValue"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Magenta Villain"
-                android:textColor="@color/lia_accent"
-                android:textSize="13sp" />
-        </LinearLayout>
-
         <!-- CONVERSATION & MEMORY -->
         <TextView
             android:layout_width="wrap_content"
