@@ -6,14 +6,12 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.myra.assistant.R
-import com.myra.assistant.ai.CameraVision
 import com.myra.assistant.util.MyraMemory
 import com.myra.assistant.util.Prefs
 import java.text.SimpleDateFormat
@@ -24,25 +22,29 @@ import java.util.Locale
  * MYRA home — sci-fi dashboard (the design Fazil approved from the
  * reference layout, rebuilt natively for MYRA):
  *
- * • Header: "MYRA / AI Assistant" with sparks orbiting the title.
- * • Middle: left pills (MEMORY / CHAT / TOOLS / SETTINGS) with light beams
- *   running to the glowing reactor orb on the right. The reactor IS the
- *   voice button — tap starts the session ("listening"), tap again stops
- *   ("ready"). Status text under the reactor mirrors the real session.
- * • Camera button toggles MYRA's camera-vision (same state as the
- *   "camera on karo / camera band karo" voice command).
+ * • Header: "MYRA / AI Assistant" with dash sparks orbiting the title and
+ *   a small cyan underline dash under the subtitle.
+ * • Middle: left pills (MEMORY / CHAT / SOUL / SETTINGS — SOUL opens her
+ *   Tools/Features, where her abilities live) with straight light beams
+ *   in each pill's color running to the glowing reactor orb on the right.
+ *   The reactor IS the voice button — tap starts the session
+ *   ("listening"), tap again stops ("ready"). Status text under the
+ *   reactor mirrors the real session.
+ * • Under the status: a wide SCREEN SHARE bar wired to MYRA's real
+ *   screen-share (same toggle as the voice control).
  * • Cards: INTELLIGENCE BRIEF (today + pending tasks from MyraMemory,
  *   "+ MORE" opens the Memory screen) and SYSTEM (real voice/memory state).
- * • Own dot-style bottom nav (Home / Chat / Voice / Memory / Tools /
- *   Settings) + a rainbow neon border. MainActivity hides its own header
- *   and bottom nav on this screen, so there is exactly one nav.
+ * • Own dot-style bottom nav (Home / Chat / Voice / Memory / History /
+ *   Settings — History opens Tools/Features) + an animated rainbow neon
+ *   border. MainActivity hides its own header and bottom nav on this
+ *   screen, so there is exactly one nav.
  */
 class HomeFragment : Fragment() {
 
     private lateinit var vm: MainViewModel
     private var reactor: ReactorView? = null
     private var statusText: TextView? = null
-    private var cameraBtn: Button? = null
+    private var screenShareBtn: TextView? = null
     private var sysVoiceState: TextView? = null
     private var sysMemoryState: TextView? = null
     private var briefDate: TextView? = null
@@ -64,7 +66,7 @@ class HomeFragment : Fragment() {
 
         reactor = view.findViewById(R.id.reactorView)
         statusText = view.findViewById(R.id.statusText)
-        cameraBtn = view.findViewById(R.id.cameraBtn)
+        screenShareBtn = view.findViewById(R.id.screenShareBtn)
         sysVoiceState = view.findViewById(R.id.sysVoiceState)
         sysMemoryState = view.findViewById(R.id.sysMemoryState)
         briefDate = view.findViewById(R.id.briefDate)
@@ -73,37 +75,45 @@ class HomeFragment : Fragment() {
         // Reactor = voice button (same toggle the old electric circle used).
         reactor?.setOnClickListener { act?.toggleVoiceSession() }
 
-        // Pills.
+        // Pills. (SOUL -> Tools/Features tab: that's where her abilities live.)
         view.findViewById<View>(R.id.pillMemory).setOnClickListener { act?.selectTab("memory") }
         view.findViewById<View>(R.id.pillChat).setOnClickListener { act?.selectTab("chat") }
-        view.findViewById<View>(R.id.pillTools).setOnClickListener { act?.selectTab("tools") }
+        view.findViewById<View>(R.id.pillSoul).setOnClickListener { act?.selectTab("tools") }
         view.findViewById<View>(R.id.pillSettings).setOnClickListener { act?.selectTab("profile") }
 
-        // Dashboard bottom nav.
+        // Pills span ~45% of the screen width, like the reference design.
+        view.post {
+            val w = (view.width * 0.45f).toInt()
+            if (w > 0) {
+                listOf(R.id.pillMemory, R.id.pillChat, R.id.pillSoul, R.id.pillSettings)
+                    .forEach { id ->
+                        val pill = view.findViewById<View>(id)
+                        val lp = pill.layoutParams
+                        lp.width = w
+                        pill.layoutParams = lp
+                    }
+            }
+        }
+
+        // Dashboard bottom nav. (History -> Tools/Features tab, the same
+        // mapping MainActivity's own navHistory uses.)
         view.findViewById<View>(R.id.navHome).setOnClickListener { act?.selectTab("home") }
         view.findViewById<View>(R.id.navChat).setOnClickListener { act?.selectTab("chat") }
         view.findViewById<View>(R.id.navVoice).setOnClickListener { act?.selectTab("home") }
         view.findViewById<View>(R.id.navMemory).setOnClickListener { act?.selectTab("memory") }
-        view.findViewById<View>(R.id.navTools).setOnClickListener { act?.selectTab("tools") }
+        view.findViewById<View>(R.id.navHistory).setOnClickListener { act?.selectTab("tools") }
         view.findViewById<View>(R.id.navSettings).setOnClickListener { act?.selectTab("profile") }
 
         // Intelligence Brief card -> Memory screen.
         view.findViewById<View>(R.id.briefCard).setOnClickListener { act?.selectTab("memory") }
         view.findViewById<View>(R.id.briefMore).setOnClickListener { act?.selectTab("memory") }
 
-        // Camera-vision toggle (same pref the voice tool flips).
-        cameraBtn?.setOnClickListener {
-            val ctx = requireContext()
-            val on = !CameraVision.isEnabled(ctx)
-            CameraVision.setEnabled(ctx, on)
-            updateCameraLabel()
-            toast(
-                if (on) "Camera ON — live session mein MYRA dekh sakti hai 📷"
-                else "Camera OFF"
-            )
-        }
+        // Screen Share bar: MYRA's real screen share (MediaProjection),
+        // the same toggle the voice control drives.
+        screenShareBtn?.setOnClickListener { act?.toggleScreenShare() }
 
         vm.isConnected.observe(viewLifecycleOwner) { updateStatus() }
+        vm.isSharing.observe(viewLifecycleOwner) { updateShareLabel() }
         vm.statusText.observe(viewLifecycleOwner) { s ->
             updateStatus()
             // Surface session errors so a failed start is never silent.
@@ -117,7 +127,7 @@ class HomeFragment : Fragment() {
 
         refreshBrief()
         refreshSystem()
-        updateCameraLabel()
+        updateShareLabel()
         updateStatus()
     }
 
@@ -125,7 +135,7 @@ class HomeFragment : Fragment() {
         super.onResume()
         refreshBrief()
         refreshSystem()
-        updateCameraLabel()
+        updateShareLabel()
     }
 
     /** Reactor glow + status word follow the real session state. */
@@ -140,6 +150,13 @@ class HomeFragment : Fragment() {
             else -> "ready"
         }
         if (view != null) refreshSystem()
+    }
+
+    /** SCREEN SHARE bar label follows the real sharing state. */
+    private fun updateShareLabel() {
+        if (!::vm.isInitialized) return
+        val on = vm.isSharing.value == true
+        screenShareBtn?.text = if (on) "🖥 SCREEN SHARE: ON" else "🖥 SCREEN SHARE: OFF"
     }
 
     /** INTELLIGENCE BRIEF: today's date/time + pending-task count (MyraMemory). */
@@ -173,19 +190,10 @@ class HomeFragment : Fragment() {
             if (Prefs.memoryEnabled) "● Memory active" else "● Memory off"
     }
 
-    private fun updateCameraLabel() {
-        val ctx = context ?: return
-        val on = CameraVision.isEnabled(ctx)
-        cameraBtn?.text = if (on) "📷 Camera: ON" else "📷 Camera: OFF"
-    }
-
-    private fun toast(s: String) =
-        Toast.makeText(requireContext(), s, Toast.LENGTH_SHORT).show()
-
     override fun onDestroyView() {
         reactor = null
         statusText = null
-        cameraBtn = null
+        screenShareBtn = null
         sysVoiceState = null
         sysMemoryState = null
         briefDate = null

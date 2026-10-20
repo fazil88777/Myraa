@@ -48,6 +48,26 @@
                     android:text="AI Assistant"
                     android:textColor="#788C9B"
                     android:textSize="13sp" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="7dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:layout_width="38dp"
+                        android:layout_height="3dp"
+                        android:background="@drawable/spark_dash" />
+
+                    <View
+                        android:layout_width="6dp"
+                        android:layout_height="6dp"
+                        android:layout_marginStart="7dp"
+                        android:background="@drawable/dot_circle"
+                        android:backgroundTint="#00E5FF" />
+                </LinearLayout>
             </LinearLayout>
         </FrameLayout>
 
@@ -74,8 +94,8 @@
 
                 <LinearLayout
                     android:id="@+id/pillMemory"
-                    android:layout_width="152dp"
-                    android:layout_height="52dp"
+                    android:layout_width="168dp"
+                    android:layout_height="56dp"
                     android:layout_marginBottom="10dp"
                     android:background="@drawable/pill_bg"
                     android:clickable="true"
@@ -102,8 +122,8 @@
 
                 <LinearLayout
                     android:id="@+id/pillChat"
-                    android:layout_width="152dp"
-                    android:layout_height="52dp"
+                    android:layout_width="168dp"
+                    android:layout_height="56dp"
                     android:layout_marginBottom="10dp"
                     android:background="@drawable/pill_bg"
                     android:clickable="true"
@@ -129,9 +149,9 @@
                 </LinearLayout>
 
                 <LinearLayout
-                    android:id="@+id/pillTools"
-                    android:layout_width="152dp"
-                    android:layout_height="52dp"
+                    android:id="@+id/pillSoul"
+                    android:layout_width="168dp"
+                    android:layout_height="56dp"
                     android:layout_marginBottom="10dp"
                     android:background="@drawable/pill_bg"
                     android:clickable="true"
@@ -150,7 +170,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="10dp"
-                        android:text="TOOLS"
+                        android:text="SOUL"
                         android:textColor="#FFFFFF"
                         android:textSize="15sp"
                         android:textStyle="bold" />
@@ -158,8 +178,8 @@
 
                 <LinearLayout
                     android:id="@+id/pillSettings"
-                    android:layout_width="152dp"
-                    android:layout_height="52dp"
+                    android:layout_width="168dp"
+                    android:layout_height="56dp"
                     android:background="@drawable/pill_bg"
                     android:clickable="true"
                     android:focusable="true"
@@ -207,18 +227,22 @@
                 android:textSize="15sp"
                 android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/cameraBtn"
+            <TextView
+                android:id="@+id/screenShareBtn"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="46dp"
                 android:layout_alignEnd="@id/statusText"
                 android:layout_alignStart="@id/statusText"
                 android:layout_below="@id/statusText"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:background="#141B28"
-                android:text="📷 Camera: OFF"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="🖥 SCREEN SHARE: OFF"
                 android:textColor="#2E9BFF"
-                android:textSize="12sp" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </RelativeLayout>
 
         <!-- Lower cards -->
@@ -332,7 +356,7 @@
             android:layout_height="1dp"
             android:background="#23374B" />
 
-        <!-- Bottom dot-nav: Home / Chat / Voice / Memory / Tools / Settings -->
+        <!-- Bottom dot-nav: Home / Chat / Voice / Memory / History / Settings -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -437,7 +461,7 @@
             </LinearLayout>
 
             <LinearLayout
-                android:id="@+id/navTools"
+                android:id="@+id/navHistory"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -455,7 +479,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Tools"
+                    android:text="History"
                     android:textColor="#788C9B"
                     android:textSize="11sp" />
             </LinearLayout>
