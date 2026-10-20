@@ -1,0 +1,139 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: #04060e;
+  color: #d9f6ff;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+.frame {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background:
+    linear-gradient(#04060e, #04060e) padding-box,
+    linear-gradient(135deg, #00e5ff, #7c4dff, #ff2fb3, #00e5ff) border-box;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+h1 {
+  font-size: 30px;
+  letter-spacing: 6px;
+  color: #eafcff;
+  text-shadow: 0 0 14px rgba(0, 229, 255, .8);
+}
+
+.subtitle {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: #6ee7ff;
+  border-bottom: 2px dashed #00e5ff;
+  padding-bottom: 2px;
+}
+
+.icon-btn {
+  background: rgba(0, 229, 255, .08);
+  border: 1px solid rgba(0, 229, 255, .4);
+  border-radius: 10px;
+  color: #d9f6ff;
+  font-size: 18px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+#settingsPanel {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(0, 229, 255, .35);
+  border-radius: 12px;
+  background: rgba(0, 40, 60, .35);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#settingsPanel.hidden { display: none; }
+#settingsPanel label { font-size: 13px; display: flex; flex-direction: column; gap: 4px; color: #9beaff; }
+#settingsPanel input, #settingsPanel select {
+  padding: 8px; border-radius: 8px; border: 1px solid rgba(0,229,255,.35);
+  background: #06121f; color: #eafcff; font-size: 14px;
+}
+.note { font-size: 11px; color: #7fa8b8; }
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 26px;
+  gap: 14px;
+  min-height: 0;
+}
+
+.orb {
+  position: relative;
+  width: 170px; height: 170px;
+  border-radius: 50%;
+  border: none;
+  background: radial-gradient(circle at 50% 45%, #123 0%, #04060e 70%);
+  cursor: pointer;
+}
+.orb .core {
+  position: absolute; inset: 38px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, #ffffff 0%, #7df3ff 25%, #00b8d9 55%, rgba(0,80,120,.15) 100%);
+  box-shadow: 0 0 34px rgba(0, 229, 255, .75), inset 0 0 22px rgba(255,255,255,.55);
+}
+.orb .ring {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+}
+.orb .r1 { border-top-color: #00e5ff; border-bottom-color: rgba(0,229,255,.35); }
+.orb .r2 { inset: 14px; border-left-color: #ff2fb3; border-right-color: rgba(124,77,255,.6); }
+.orb.listening .r1 { animation: spin 3.2s linear infinite; }
+.orb.listening .r2 { animation: spinR 5s linear infinite; }
+.orb.listening .core { animation: pulse 1.6s ease-in-out infinite; }
+.orb.speaking .core { animation: pulse .7s ease-in-out infinite; box-shadow: 0 0 46px rgba(255, 47, 179, .8), inset 0 0 22px rgba(255,255,255,.6); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spinR { to { transform: rotate(-360deg); } }
+@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+
+.status { font-size: 15px; color: #aee9ff; text-align: center; min-height: 20px; }
+
+.log {
+  width: 100%;
+  flex: 1;
+  min-height: 90px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 2px;
+}
+.msg { font-size: 13.5px; line-height: 1.45; padding: 8px 11px; border-radius: 10px; max-width: 92%; }
+.msg.user { align-self: flex-end; background: rgba(124, 77, 255, .22); border: 1px solid rgba(124,77,255,.5); }
+.msg.myra { align-self: flex-start; background: rgba(0, 229, 255, .10); border: 1px solid rgba(0,229,255,.35); }
+.msg.sys { align-self: center; background: transparent; border: none; color: #7fa8b8; font-size: 12px; }
+
+footer { display: flex; gap: 8px; margin-top: 10px; }
+footer input {
+  flex: 1; padding: 10px; border-radius: 10px;
+  border: 1px solid rgba(0,229,255,.35); background: #06121f; color: #eafcff; font-size: 14px;
+}
+.primary {
+  padding: 10px 16px; border-radius: 10px; border: 1px solid #00e5ff;
+  background: rgba(0, 229, 255, .16); color: #eafcff; cursor: pointer; font-size: 14px;
+}
+.primary:hover { background: rgba(0, 229, 255, .3); }
+
+.hint { text-align: center; font-size: 11.5px; color: #5f8291; margin-top: 10px; }

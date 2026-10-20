@@ -1,0 +1,12 @@
+[package]
+name = "myra-windows"
+version = "0.1.0"
+description = "MYRA for Windows - voice assistant"
+authors = ["Fazil"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

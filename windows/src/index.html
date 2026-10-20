@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MYRA — AI Assistant</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="frame">
+    <header>
+      <div class="title-block">
+        <h1>MYRA</h1>
+        <span class="subtitle">AI Assistant</span>
+      </div>
+      <button id="gearBtn" class="icon-btn" title="Settings">⚙️</button>
+    </header>
+
+    <section id="settingsPanel" class="hidden">
+      <label>Gemini API Key
+        <input id="apiKey" type="password" placeholder="Apni Gemini API key yahan lagao" />
+      </label>
+      <label>Tumhara naam
+        <input id="userName" type="text" placeholder="Fazil" />
+      </label>
+      <label>Awaz (voice)
+        <select id="voiceName">
+          <option value="Sulafat" selected>Sulafat</option>
+          <option value="Kore">Kore</option>
+          <option value="Aoede">Aoede</option>
+          <option value="Leda">Leda</option>
+          <option value="Zephyr">Zephyr</option>
+          <option value="Puck">Puck</option>
+        </select>
+      </label>
+      <label>Model
+        <input id="modelName" type="text" />
+      </label>
+      <button id="saveSettings" class="primary">Save karo</button>
+      <p class="note">API key sirf tumhare laptop par save hoti hai, kahin bheji nahi jati.</p>
+    </section>
+
+    <main>
+      <button id="orb" class="orb idle" title="Baatein shuru / band karo">
+        <span class="ring r1"></span>
+        <span class="ring r2"></span>
+        <span class="core"></span>
+      </button>
+      <p id="status" class="status">Ready — orb dabao aur baat shuru karo</p>
+
+      <div id="log" class="log"></div>
+    </main>
+
+    <footer>
+      <input id="textInput" type="text" placeholder="Ya yahan command likho… (Enter)" />
+      <button id="sendBtn" class="primary">Bhejo</button>
+    </footer>
+    <p class="hint">Try karo: “YouTube par naat search karo” • “Naya folder banao” • “Time kya hai”</p>
+  </div>
+  <script src="main.js"></script>
+</body>
+</html>
