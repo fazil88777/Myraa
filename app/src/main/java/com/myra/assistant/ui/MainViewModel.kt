@@ -40,6 +40,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _statusText = MutableLiveData("Idle")
     val statusText: LiveData<String> = _statusText
 
+    /** One-shot message the UI toasts once (EL fallback notice, final
+     *  give-up reason) — id increments so repeats are never swallowed. */
+    data class ToastEvent(val id: Long, val message: String)
+
+    private val _toastEvent = MutableLiveData<ToastEvent>()
+    val toastEvent: LiveData<ToastEvent> = _toastEvent
+    private var toastSeq = 0L
+
+    private fun postToast(message: String) {
+        _toastEvent.postValue(ToastEvent(++toastSeq, message))
+    }
+
     private val _isConnected = MutableLiveData(false)
     val isConnected: LiveData<Boolean> = _isConnected
 
@@ -81,6 +93,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var reconnectScheduled = false
     private var reconnectAttempts = 0
     private var sessionGen = 0
+
+    // --- honest setup-failure state (ElevenLabs-mode fix) ---
+    // A connect attempt is in flight (setup sent, not yet resolved).
+    private var sessionConnecting = false
+    // The current attempt reached setupComplete (the session truly lived).
+    private var setupCompletedThisSession = false
+    // The latest death happened BEFORE setupComplete: deterministic
+    // (a rejected setup fails identically every retry) -> capped retries.
+    private var lastDeathPreSetup = false
+    // Last death's posted reason — friendly line PLUS the server's raw
+    // code/reason — shown in the parked status and toasted on give-up.
+    private var lastDeathInfo: String? = null
+    // Per manual start: the ONE EL TEXT -> AUDIO fallback already used.
+    private var elAudioFallbackUsed = false
+    // The current attempt chain runs AUDIO on the native-audio model even
+    // though ElevenLabs is configured (set by the fallback; auto-reconnects
+    // keep it, they never re-arm the fallback itself).
+    private var attemptForceAudio = false
+    // The give-up toast fires once per failure chain.
+    private var giveUpToastShown = false
     // Coroutine scope bound to the CURRENT session: cancelled on every teardown
     // so a tool call from the dying session can never answer the new socket.
     private var sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -163,8 +195,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun autoReconnect() {
         if (manualStop || reconnectScheduled || isFullyOff) return
         val key = savedApiKey ?: return
-        if (reconnectAttempts >= 5) {
-            _statusText.postValue("Connection lost — net check karke dobara connect dabao")
+        // Retry cap by failure kind: deaths BEFORE setupComplete are
+        // deterministic (a rejected setup fails identically every retry),
+        // so they stop after 2 attempts and park with the server's real
+        // reason in the status (+ one toast) instead of looping silently.
+        // A session that actually connected keeps the full 5 attempts.
+        val cap = if (lastDeathPreSetup) 2 else 5
+        if (reconnectAttempts >= cap) {
+            val info = lastDeathInfo
+            _statusText.postValue(
+                if (info != null) "Connection lost — $info"
+                else "Connection lost — net check karke dobara connect dabao"
+            )
+            if (info != null && !giveUpToastShown) {
+                giveUpToastShown = true
+                postToast(info)
+            }
             return
         }
         reconnectAttempts++
@@ -235,7 +281,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startSession(apiKey: String) {
-        if (_isConnected.value == true) return
+        // Re-entrancy guard: ignore a start while a session is live OR
+        // still connecting — an orb double-tap must not restart an
+        // in-flight attempt (the old guard only checked the live state).
+        if (_isConnected.value == true || sessionConnecting) return
         // Fully off: only a manual app open clears this (see MainActivity).
         if (isFullyOff || Prefs.fullyOff) {
             _statusText.postValue("MYRA off hai — app dobara kholo taake on ho")
@@ -244,6 +293,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         savedApiKey = apiKey
         // Fresh user-initiated start: past reconnect failures don't count.
         reconnectAttempts = 0
+        // A fresh manual start also re-arms the honest-failure bookkeeping
+        // and this start's ONE ElevenLabs TEXT -> AUDIO fallback.
+        lastDeathPreSetup = false
+        lastDeathInfo = null
+        elAudioFallbackUsed = false
+        attemptForceAudio = false
+        giveUpToastShown = false
         // User pressed the button: announce the welcome voice on connect.
         speakWelcomeOnConnect = true
         // Emotional state: work out her mood BEFORE the new session's system
@@ -274,6 +330,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Invalidate stale delayed callbacks (e.g. a pending autoReconnect
         // posted by the dying session's onClosed).
         sessionGen++
+        // This attempt is now connecting; it only counts as "lived" once
+        // setupComplete arrives (drives the honest failure caps below).
+        sessionConnecting = true
+        setupCompletedThisSession = false
         // Fresh coroutine scope per session: a tool call from the dying
         // session is cancelled here and can never answer the new socket.
         try {
@@ -301,7 +361,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // ElevenLabs mode is decided HERE, once, at session start (the
         // client's setup reads the same flag for its TEXT modality) —
         // changing the key in Settings mid-session never switches voices.
-        elSpeaker = if (Prefs.elevenLabsEnabled) {
+        elSpeaker = if (Prefs.elevenLabsEnabled && !attemptForceAudio) {
             try {
                 ElevenLabsSpeaker(getApplication())
             } catch (_: Exception) {
@@ -319,6 +379,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             override fun onSetupComplete() {
                 if (gen != sessionGen) return
                 postConnected(true)
+                sessionConnecting = false
+                setupCompletedThisSession = true
+                lastDeathPreSetup = false
+                giveUpToastShown = false
                 // A live connection counts as an interaction for the
                 // Missing-You gap calculation.
                 try {
@@ -468,19 +532,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onError(msg: String) {
                 if (gen != sessionGen) return
-                // The socket reported an error: mark the session dead so
-                // scheduleReconnect() actually reconnects instead of no-op'ing
-                // on the stale "connected" flag.
-                postConnected(false)
-                _statusText.postValue(msg)
-                scheduleReconnect()
+                onSessionDied(msg, fromServerClose = false)
             }
 
             override fun onClosed(reason: String) {
                 if (gen != sessionGen) return
-                postConnected(false)
-                _statusText.postValue(reason)
-                scheduleReconnect()
+                onSessionDied(reason, fromServerClose = true)
             }
 
             override fun onGoAway() {
@@ -498,6 +555,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         })
         client = c
+        // An EL fallback attempt must set up AUDIO on the native-audio
+        // model even though ElevenLabs is configured (see sendSetup).
+        c.forceAudioMode = attemptForceAudio
         c.connect(apiKey)
         // Re-hook screen frames to the new client if sharing was already on
         if (_isSharing.value == true) {
@@ -508,6 +568,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         CameraVision.sessionLive = true
         CameraVision.onFrame = { b64 -> sendVideoFrame(b64) }
         CameraVision.refresh(getApplication())
+    }
+
+    /**
+     * Single funnel for "the live session just died" (socket closed OR a
+     * server/setup error): records the honest reason (the client's friendly
+     * line already carries the RAW close code + server words), runs the
+     * one-time ElevenLabs TEXT -> AUDIO fallback when a TEXT setup was
+     * rejected, and otherwise hands over to the normal reconnect policy.
+     */
+    private fun onSessionDied(info: String, fromServerClose: Boolean) {
+        sessionConnecting = false
+        // Mark the session dead so scheduleReconnect() actually reconnects
+        // instead of no-op'ing on the stale "connected" flag.
+        postConnected(false)
+        lastDeathInfo = info
+        val diedPreSetup = !setupCompletedThisSession
+        lastDeathPreSetup = diedPreSetup
+
+        // ElevenLabs fallback: the TEXT setup was rejected BEFORE the
+        // session ever came up (a server close, or an explicit setup/server
+        // error — a plain transport failure like no-internet does NOT
+        // qualify, switching modality cannot fix that). Retry ONCE, right
+        // away, in AUDIO on the native-audio model so he still gets a
+        // working session with Gemini's own voice. Auto-reconnects never
+        // re-arm this; if the AUDIO attempt also dies pre-setup, the
+        // normal capped give-up applies.
+        val setupRejected = fromServerClose ||
+            info.startsWith("Setup rejected:") || info.startsWith("Server error:")
+        if (diedPreSetup && setupRejected && Prefs.elevenLabsEnabled &&
+            !attemptForceAudio && !elAudioFallbackUsed
+        ) {
+            val key = savedApiKey
+            if (key != null) {
+                elAudioFallbackUsed = true
+                attemptForceAudio = true
+                postToast("ElevenLabs ke liye TEXT model nahi mila — Live awaaz chala di hai")
+                beginNewSession(key)
+                return
+            }
+        }
+        _statusText.postValue(info)
+        scheduleReconnect()
     }
 
     /**
@@ -736,6 +838,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Tear down audio + socket without marking a manual stop. */
     private fun stopSessionInternal() {
+        sessionConnecting = false
         // Session ending = the last interaction, for the Missing-You gap.
         try {
             com.myra.assistant.util.MoodManager.touchInteraction()

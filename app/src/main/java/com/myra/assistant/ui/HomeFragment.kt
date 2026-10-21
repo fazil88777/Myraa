@@ -49,6 +49,7 @@ class HomeFragment : Fragment() {
     private var briefDate: TextView? = null
     private var briefTasks: TextView? = null
     private var lastErrorShown: String? = null
+    private var lastToastId = 0L
     private var wasConnected = false
 
     override fun onCreateView(
@@ -129,6 +130,14 @@ class HomeFragment : Fragment() {
             if (low.contains("error") || low.contains("off hai") || low.contains("lost")) {
                 lastErrorShown = s
                 Toast.makeText(requireContext(), s, Toast.LENGTH_LONG).show()
+            }
+        }
+        vm.toastEvent.observe(viewLifecycleOwner) { ev ->
+            // One-shot ViewModel notices: the ElevenLabs AUDIO fallback and
+            // the final reconnect give-up reason (raw server words included).
+            if (ev != null && ev.id != lastToastId) {
+                lastToastId = ev.id
+                Toast.makeText(requireContext(), ev.message, Toast.LENGTH_LONG).show()
             }
         }
 

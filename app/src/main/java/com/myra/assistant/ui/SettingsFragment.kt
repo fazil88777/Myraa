@@ -337,8 +337,10 @@ class SettingsFragment : Fragment() {
     /** LIVE API TEST: one minimal Gemini REST call with the saved key.
      *  Uses stable REST text models — NEVER the Live session model. A 404 here means
      *  the model is retired / not available for this key (gemini-2.0-flash was shut
-     *  down by Google on 2026-06-01 and returns 404 for everyone), so fall back
-     *  through the successor model and finally the models list before failing. */
+     *  down by Google on 2026-06-01 and returns 404 for everyone), and a transient
+     *  5xx (500/503) means the server is overloaded — both fall back through the
+     *  successor model and finally the models list before failing. Only a key
+     *  error (400/403) fails fast. */
     private fun runApiTest() {
         val key = Prefs.apiKey
         if (key.isBlank()) {
@@ -390,7 +392,14 @@ class SettingsFragment : Fragment() {
                             } catch (_: Exception) {
                                 ""
                             }
-                            modelBlocked = resp.code == 404
+                            // Fall through to the next candidate on 404
+                            // (model retired / not on this key) AND on
+                            // transient 5xx (500/503 'high demand' overload —
+                            // Fazil hit a 503 on the first model and the
+                            // chain used to stop cold). Only a KEY error
+                            // (400 API_KEY_INVALID / 403) stops the chain,
+                            // by leaving modelBlocked false.
+                            modelBlocked = resp.code == 404 || resp.code == 500 || resp.code == 503
                         }
                     }
                     if (ok || !modelBlocked) break

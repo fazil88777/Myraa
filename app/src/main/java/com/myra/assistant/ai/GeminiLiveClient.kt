@@ -35,6 +35,21 @@ class GeminiLiveClient(private val listener: Listener) {
 
     companion object {
         const val MODEL = "models/gemini-3.1-flash-live-preview"
+
+        /**
+         * Half-cascade Live model for ElevenLabs (TEXT) mode. The native-audio
+         * models (MODEL above, gemini-3.8-live, the native-audio previews)
+         * REJECT responseModalities ["TEXT"] at setup — the server closes the
+         * socket with 1007 ("The requested combination of response modalities
+         * (TEXT) is not supported by the model") before setupComplete, which
+         * is exactly why EL mode could never connect. This id is the Gemini
+         * API's "2.5 Flash Live" half-cascade model: real clients run it with
+         * TEXT as the default response modality against this same endpoint,
+         * and Google's model list documents its output as "Text, audio".
+         * (Its sibling id "gemini-live-2.5-flash-preview" was SHUT DOWN on
+         * 2025-12-09 — do not "fix" this back to that one.)
+         */
+        const val TEXT_MODEL = "models/gemini-2.5-flash-live-preview"
         const val BASE_URL =
             "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key="
 
@@ -44,6 +59,11 @@ class GeminiLiveClient(private val listener: Listener) {
 
         @Volatile
         var resumptionHandleAt: Long = 0L
+
+        /** Modality ("AUDIO"/"TEXT") of the session that minted the saved
+         *  handle — a handle is only valid for the same modality. */
+        @Volatile
+        var resumptionHandleMode: String? = null
 
         /** Returns the saved handle only if it is fresh enough to be usable. */
         fun takeResumptionHandle(): String? {
@@ -61,6 +81,7 @@ class GeminiLiveClient(private val listener: Listener) {
         fun clearResumptionHandle() {
             resumptionHandle = null
             resumptionHandleAt = 0L
+            resumptionHandleMode = null
         }
     }
 
@@ -74,6 +95,18 @@ class GeminiLiveClient(private val listener: Listener) {
             .build()
 
     private var socket: WebSocket? = null
+
+    /**
+     * Set by MainViewModel BEFORE connect(): force the native-audio model +
+     * AUDIO modality even when ElevenLabs is configured. This is the
+     * one-time EL fallback — the TEXT setup was rejected, so the session
+     * runs on Gemini's own voice instead of ElevenLabs for this start.
+     */
+    var forceAudioMode: Boolean = false
+
+    /** Modality this client actually set up with (decided in sendSetup);
+     *  tags the resumption handles this session mints. */
+    private var sessionIsText: Boolean = false
 
     fun connect(apiKey: String) {
         try {
@@ -132,11 +165,24 @@ class GeminiLiveClient(private val listener: Listener) {
 
     private fun friendlyCloseReason(code: Int, reason: String): String {
         Log.d("GeminiLive", "WS closed code=$code reason=$reason")
-        return when {
+        val friendly = when {
             reason.contains("GoAway", ignoreCase = true) ->
                 "Server ne session band kar diya (waqt poora ho gaya tha) — dobara connect ho rahi hoon"
             code == 1000 -> "Disconnected"
             else -> "Connection toot gaya — dobara connect ho rahi hoon"
+        }
+        // NEVER mask the server's real words: a rejected setup (e.g. close
+        // 1007 "The requested combination of response modalities (TEXT) is
+        // not supported by the model") must reach the status line verbatim,
+        // or the failure is undiagnosable from the phone. A clean 1000
+        // close stays the plain friendly line.
+        val raw = reason.trim()
+        return when {
+            code == 1000 -> friendly
+            raw.isNotEmpty() && !friendly.contains(raw) ->
+                "$friendly (code $code: ${raw.take(120)})"
+
+            else -> "$friendly (code $code)"
         }
     }
 
@@ -145,7 +191,9 @@ class GeminiLiveClient(private val listener: Listener) {
         return when {
             m.contains("Unable to resolve host", ignoreCase = true) ->
                 "Internet nahi mil raha — net check karo, phir dobara try karungi"
-            else -> "Connection me masla aaya — dobara connect ho rahi hoon"
+            else ->
+                "Connection me masla aaya — dobara connect ho rahi hoon " +
+                    "(${t.javaClass.simpleName}: ${(t.message ?: "").take(100)})"
         }
     }
 
@@ -567,7 +615,11 @@ class GeminiLiveClient(private val listener: Listener) {
             // is spoken by ElevenLabsSpeaker; otherwise native Live audio
             // with the prebuilt voice, exactly as before. speechConfig is
             // only valid for AUDIO, so it is omitted in TEXT mode.
-            val elMode = com.myra.assistant.util.Prefs.elevenLabsEnabled
+            // forceAudioMode (set by MainViewModel) is the one-time fallback
+            // after a TEXT setup was rejected: this attempt then runs
+            // exactly like a non-EL AUDIO session.
+            val elMode = com.myra.assistant.util.Prefs.elevenLabsEnabled && !forceAudioMode
+            sessionIsText = elMode
             val genConfig = JSONObject()
                 .put("responseModalities", JSONArray().put(if (elMode) "TEXT" else "AUDIO"))
             if (!elMode) {
@@ -583,7 +635,11 @@ class GeminiLiveClient(private val listener: Listener) {
                 )
             }
             val setup = JSONObject()
-                .put("model", MODEL)
+                // MODEL BY MODE: the native-audio MODEL rejects TEXT at
+                // setup (the server closes 1007 before setupComplete), so
+                // EL mode MUST use the half-cascade TEXT_MODEL. AUDIO mode
+                // (and the EL fallback) stays on MODEL.
+                .put("model", if (elMode) TEXT_MODEL else MODEL)
                 .put(
                     "sessionResumption",
                     // Resume previous conversation context when we have a fresh
@@ -591,7 +647,14 @@ class GeminiLiveClient(private val listener: Listener) {
                     // Abnormal-death reconnects clear the handle first, so they
                     // always start a clean session instead of a zombie resume.
                     // Empty object = just enable resumption for this session.
-                    takeResumptionHandle()?.let { JSONObject().put("handle", it) } ?: JSONObject()
+                    // MODALITY RULE: a handle is only valid for the modality
+                    // that minted it — EL (TEXT) starts and the AUDIO
+                    // fallback never send one, and a handle minted by a TEXT
+                    // session must not poison a later AUDIO setup.
+                    (
+                        if (elMode || forceAudioMode || resumptionHandleMode == "TEXT") null
+                        else takeResumptionHandle()
+                        )?.let { JSONObject().put("handle", it) } ?: JSONObject()
                 )
                 .put("generationConfig", genConfig)
                 .put("inputAudioTranscription", JSONObject())
@@ -939,6 +1002,7 @@ class GeminiLiveClient(private val listener: Listener) {
             if (h.isNotBlank()) {
                 resumptionHandle = h
                 resumptionHandleAt = System.currentTimeMillis()
+                resumptionHandleMode = if (sessionIsText) "TEXT" else "AUDIO"
                 android.util.Log.d("GeminiLive", "saved resumption handle")
             }
             return
