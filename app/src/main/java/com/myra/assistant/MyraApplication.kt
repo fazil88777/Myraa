@@ -9,9 +9,9 @@ class MyraApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Prefs.init(this)
-        // One-time: land existing installs on the Gemini voice (the Edge
+        // One-time: land installs on the Gemini TTS voice (the Edge
         // endpoint is blocked on some networks) — see Prefs.
-        Prefs.migrateVoiceFailSafe()
+        Prefs.migrateVoiceGeminiTts()
         MyraMemory.init(this)
         // Accurate app-foreground tracking for the floating neon border:
         // registered at process start so no activity transition is missed.

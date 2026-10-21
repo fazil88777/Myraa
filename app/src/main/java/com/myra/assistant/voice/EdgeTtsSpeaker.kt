@@ -42,13 +42,14 @@ import java.util.concurrent.TimeUnit
  * crying / missing / hurt -> slower and lower, happy / romantic /
  * playful -> a touch brighter and faster.
  *
- * FAIL-SAFE CHAIN (per segment, so her voice NEVER just fails):
+ * FAIL-SAFE CHAIN (per segment):
  *  1. Edge Neural TTS over the WebSocket below (~3s budget);
  *  2. Google Translate TTS over plain HTTPS (translate_tts, the same
- *     text, chunked to what the endpoint accepts);
- *  3. the phone's own TTS engine via [DeviceTts] (offline, always there).
- * Every layer fails SILENTLY into the next (log only) — there is no
- * user-visible "voice failed" message anywhere.
+ *     text, chunked to what the endpoint accepts).
+ * Both layers fail SILENTLY into the next (log only) — if both are
+ * unreachable the segment is simply not spoken. There is NO robotic
+ * device-TTS behind them and no user-visible "voice failed" message
+ * anywhere.
  *
  * Robustness rules (a TTS failure must NEVER break the session):
  *  - every network/playback error just moves to the next layer or, at
@@ -57,7 +58,7 @@ import java.util.concurrent.TimeUnit
  *    socket, clears the queue and halts playback immediately via a
  *    generation counter — stale work from an older moment can never play.
  */
-class EdgeTtsSpeaker(context: Context) {
+class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
 
     companion object {
         private const val TAG = "EdgeTts"
@@ -147,24 +148,23 @@ class EdgeTtsSpeaker(context: Context) {
     // ------------------------------------------------------------------
 
     /** Feed one streamed text delta of the model's current reply. */
-    fun enqueueDelta(delta: String) {
+    override fun enqueueDelta(delta: String) {
         if (released || delta.isEmpty()) return
         synchronized(buffer) { buffer.append(delta) }
         for (s in extractSentences(flush = false)) dispatch(s)
     }
 
     /** The model's turn ended: speak whatever partial sentence remains. */
-    fun flushTurn() {
+    override fun flushTurn() {
         if (released) return
         for (s in extractSentences(flush = true)) dispatch(s)
     }
 
     /**
      * Speak one standalone line (the session greeting). Exactly one of
-     * [onPlayed] / [onFailed] fires, on the pipeline thread — the caller
-     * arranges any fallback (e.g. Android TTS) from there.
+     * [onPlayed] / [onFailed] fires, on the pipeline thread.
      */
-    fun speakOnce(text: String, onPlayed: () -> Unit, onFailed: () -> Unit) {
+    override fun speakOnce(text: String, onPlayed: () -> Unit, onFailed: () -> Unit) {
         if (released) {
             safeCallback(onFailed)
             return
@@ -178,7 +178,7 @@ class EdgeTtsSpeaker(context: Context) {
     }
 
     /** Barge-in / new turn / session stop: silence NOW, drop everything pending. */
-    fun stopAll() {
+    override fun stopAll() {
         generation++
         queue.clear()
         synchronized(buffer) { buffer.setLength(0) }
@@ -187,10 +187,6 @@ class EdgeTtsSpeaker(context: Context) {
         } catch (_: Exception) {
         }
         currentSocket = null
-        try {
-            DeviceTts.stop()
-        } catch (_: Exception) {
-        }
         try {
             currentPlayer?.stop()
         } catch (_: Exception) {
@@ -204,7 +200,7 @@ class EdgeTtsSpeaker(context: Context) {
     }
 
     /** Session is over for good: stop everything and kill the pipeline thread. */
-    fun release() {
+    override fun release() {
         if (released) return
         released = true
         try {
@@ -229,9 +225,9 @@ class EdgeTtsSpeaker(context: Context) {
 
     /**
      * Speak one segment through the fail-safe chain — see the class doc.
-     * Returns via the segment's callbacks: onPlayed when ANY layer spoke
+     * Returns via the segment's callbacks: onPlayed when a layer spoke
      * it (or silence was deliberately chosen by a barge-in), onFailed
-     * only when no layer could speak at all.
+     * only when neither online layer could speak at all.
      */
     private fun playSegment(seg: Segment) {
         var handled = false
@@ -239,24 +235,17 @@ class EdgeTtsSpeaker(context: Context) {
             // Layer 1: Edge Neural TTS (fresh WebSocket, ~3s budget).
             val edgeBytes = synthesize(seg.text)
             // Layer 2: Google Translate TTS (plain HTTPS, ~3s budget),
-            // tried only when Edge produced nothing.
+            // tried only when Edge produced nothing. Nothing behind it:
+            // both layers down = this segment stays silent.
             val chunks: List<ByteArray>? =
                 if (edgeBytes != null) listOf(edgeBytes)
                 else synthesizeGoogle(seg.text, seg.gen)
             if (chunks != null && seg.gen == generation && !released) {
                 when (playChunks(chunks, seg.gen)) {
                     // Fully/partly spoken, or interrupted before any audio
-                    // (barge-in): either way the segment is DONE — the
-                    // device voice must not repeat or fight it.
+                    // (barge-in): either way the segment is DONE.
                     1, 0 -> handled = true
-                    // -1: failed before a single byte played — fall through.
-                }
-            }
-            // Layer 3: the phone's own TTS engine (DeviceTts) — offline,
-            // always installed; blocks this thread so order is preserved.
-            if (!handled && seg.gen == generation && !released) {
-                handled = DeviceTts.speakBlocking(appCtx, seg.text) {
-                    seg.gen != generation || released
+                    // -1: failed before a single byte played — silent.
                 }
             }
         } catch (e: Exception) {
@@ -270,7 +259,7 @@ class EdgeTtsSpeaker(context: Context) {
      * Play MP3 chunks back-to-back as ONE segment.
      * Returns 1 = spoken (fully, or partly before an interruption),
      * 0 = interrupted before any audio played, -1 = failed before any
-     * audio played (the caller may fall through to the device voice).
+     * audio played.
      */
     private fun playChunks(chunks: List<ByteArray>, gen: Int): Int {
         var playedAny = false
@@ -321,7 +310,7 @@ class EdgeTtsSpeaker(context: Context) {
     /**
      * Fetch this segment's MP3(s) from Google Translate TTS, in order.
      * Null on ANY failure (HTTP error, network, stale generation) —
-     * silently: the device voice is the next layer.
+     * silently: the segment then stays unspoken.
      */
     private fun synthesizeGoogle(text: String, gen: Int): List<ByteArray>? {
         return try {

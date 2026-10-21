@@ -162,8 +162,8 @@ class SettingsFragment : Fragment() {
             }
         }
         view.findViewById<View>(R.id.rowVoiceEngine).setOnClickListener {
-            val labels = listOf("Edge TTS (Free)", "Gemini Live awaaz")
-            val keys = listOf("EDGE", "GEMINI")
+            val labels = listOf("Gemini TTS (Tara jaisi)", "Edge TTS (Free)", "Gemini Live awaaz")
+            val keys = listOf("GEMINI_TTS", "EDGE", "GEMINI")
             choiceDialog(
                 "Voice Engine",
                 labels,
@@ -172,8 +172,11 @@ class SettingsFragment : Fragment() {
                 Prefs.voiceEngine = keys[which]
                 refreshAll()
                 toast(
-                    if (keys[which] == "EDGE") "Edge TTS select ho gaya — free, koi key nahi chahiye"
-                    else "Gemini Live awaaz select ho gayi"
+                    when (keys[which]) {
+                        "GEMINI_TTS" -> "Gemini TTS select ho gaya — tumhari Gemini key se chalegi"
+                        "EDGE" -> "Edge TTS select ho gaya — free, koi key nahi chahiye"
+                        else -> "Gemini Live awaaz select ho gayi"
+                    }
                 )
             }
         }
@@ -316,12 +319,19 @@ class SettingsFragment : Fragment() {
             v.findViewById<TextView>(R.id.rowApiKeyValue).text =
                 if (Prefs.apiKey.isBlank()) "Not set" else "(set ✓)"
             v.findViewById<TextView>(R.id.rowVoiceEngineValue).text =
-                if (Prefs.voiceEngine == "GEMINI") "Gemini Live awaaz" else "Edge TTS (Free)"
+                when (Prefs.voiceEngine) {
+                    "GEMINI" -> "Gemini Live awaaz"
+                    "EDGE" -> "Edge TTS (Free)"
+                    else -> "Gemini TTS (Tara jaisi)"
+                }
             v.findViewById<TextView>(R.id.rowEdgeVoiceValue).text =
                 if (Prefs.edgeVoice == "hi-IN-SwaraNeural") "Swara (Hindi)" else "Uzma (Urdu)"
             v.findViewById<TextView>(R.id.voiceEngineCaption).text =
-                if (Prefs.transcriptVoiceEnabled) "Edge awaaz (fail ho to Google / phone ki awaaz khud aa jayegi)"
-                else "Gemini Live ki apni awaaz chalegi"
+                when (Prefs.voiceEngine) {
+                    "GEMINI_TTS" -> "Gemini TTS awaaz on hai — tumhari Gemini key se"
+                    "EDGE" -> "Edge awaaz (fail ho to Google ki awaaz khud aa jayegi)"
+                    else -> "Gemini Live ki apni awaaz chalegi"
+                }
             v.findViewById<TextView>(R.id.rowLanguageValue).text =
                 LiaStyle.langLabel(Prefs.language)
             v.findViewById<TextView>(R.id.rowSpeechSpeedValue).text =

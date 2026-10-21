@@ -17,8 +17,9 @@ import com.myra.assistant.service.BorderOverlay
 import com.myra.assistant.service.FloatingOrbService
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.Prefs
-import com.myra.assistant.voice.DeviceTts
 import com.myra.assistant.voice.EdgeTtsSpeaker
+import com.myra.assistant.voice.GeminiTtsSpeaker
+import com.myra.assistant.voice.VoiceSpeaker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -80,12 +81,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // (never on auto-reconnects). Mic capture starts after the welcome
     // finishes so the model doesn't hear it as user speech.
     private var speakWelcomeOnConnect = false
-    // Edge TTS voice for THIS session (null in Gemini Live audio mode).
-    // Created fresh in beginNewSession when the Voice Engine is EDGE; the
-    // Live session stays in AUDIO mode but asks for output transcription,
-    // and this speaker voices the reply's transcript text sentence by
-    // sentence while Gemini's own audio is discarded.
-    private var voiceSpeaker: EdgeTtsSpeaker? = null
+    // Transcript-mode TTS voice for THIS session (null in Gemini Live
+    // audio mode). Created fresh in beginNewSession when a transcript
+    // Voice Engine is selected (GEMINI_TTS -> GeminiTtsSpeaker, EDGE ->
+    // EdgeTtsSpeaker); the Live session stays in AUDIO mode but asks
+    // for output transcription, and this speaker voices the reply's
+    // transcript text sentence by sentence while Gemini's own audio is
+    // discarded.
+    private var voiceSpeaker: VoiceSpeaker? = null
     // Silence-fix state: auto-reconnect when the socket dies, and detect a
     // "half-dead" socket (mic hears the user, but no transcription ever arrives).
     private var manualStop = false
@@ -353,7 +356,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // — changing the key in Settings mid-session never switches voices.
         voiceSpeaker = if (Prefs.transcriptVoiceEnabled) {
             try {
-                EdgeTtsSpeaker(getApplication())
+                if (Prefs.voiceEngine == "EDGE") EdgeTtsSpeaker(getApplication())
+                else GeminiTtsSpeaker(getApplication())
             } catch (_: Exception) {
                 null
             }
@@ -648,15 +652,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Speaks "Welcome to Myra Assistant" (guaranteed to play — the AI model
      * doesn't always volunteer a greeting), then runs [after] once the
      * welcome has finished so the mic never picks it up as user speech.
-     * Edge TTS mode: the line goes through the speaker's fail-safe chain
-     * (Edge -> Google Translate TTS -> the phone's own TTS); if even that
-     * somehow fails, the phone's own TTS below takes over so the
-     * greeting is never lost.
+     * Transcript engines speak the line through their speaker; on ANY
+     * failure the chain simply moves on WITHOUT speech — there is no
+     * robotic device-TTS fallback anywhere in the app. Gemini Live mode
+     * has no canned greeting at all: the session just starts.
      */
     private fun speakWelcomeThen(after: () -> Unit) {
         val speaker = voiceSpeaker
         if (speaker == null) {
-            speakWelcomeViaTts(after)
+            // Gemini Live's own voice mode: no canned greeting line.
+            after()
             return
         }
         val ui = Handler(Looper.getMainLooper())
@@ -674,38 +679,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 onFailed = {
                     ui.post {
                         if (settled.compareAndSet(false, true)) {
-                            speakWelcomeViaTts(after)
+                            after()
                         }
                     }
                 }
             )
-            // Safety net: a hung Edge TTS request must never hold the mic
-            // hostage — fall back to the phone TTS after a few seconds.
+            // Safety net: a hung synthesis must never hold the mic
+            // hostage — start capture without the greeting after a few
+            // seconds.
             ui.postDelayed({
                 if (settled.compareAndSet(false, true)) {
                     try {
                         speaker.stopAll()
                     } catch (_: Exception) {
                     }
-                    speakWelcomeViaTts(after)
+                    after()
                 }
             }, 9000)
-        } catch (_: Exception) {
-            speakWelcomeViaTts(after)
-        }
-    }
-
-    /**
-     * The original greeting path: the phone's own voice engine — the
-     * SHARED [DeviceTts] engine, the same one the Edge speaker's
-     * last-resort fallback speaks through (one engine for the app).
-     */
-    private fun speakWelcomeViaTts(after: () -> Unit) {
-        val ui = Handler(Looper.getMainLooper())
-        try {
-            DeviceTts.speakWelcome(getApplication(), "Welcome to Myra Assistant") {
-                ui.postDelayed({ after() }, 2600)
-            }
         } catch (_: Exception) {
             after()
         }
@@ -800,10 +790,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         CameraVision.sessionLive = false
         CameraVision.refresh(getApplication())
         CameraVision.onFrame = null
-        try {
-            DeviceTts.stop()
-        } catch (_: Exception) {
-        }
         try {
             voiceSpeaker?.release()
         } catch (_: Exception) {

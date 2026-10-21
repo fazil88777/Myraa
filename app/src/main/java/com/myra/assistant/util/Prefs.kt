@@ -48,33 +48,32 @@ object Prefs {
         get() = str("api_key", "")
         set(value) = putStr("api_key", value)
 
-    /** Voice engine: "GEMINI" (Gemini Live's own native voice — the
-     *  default; it rides the same connection that already works) or
+    /** Voice engine: "GEMINI_TTS" (Gemini TTS model speaks the Live
+     *  session's transcript with the app's own Gemini key — the default),
      *  "EDGE" (Microsoft Edge Neural TTS — free, no key, with Google
-     *  Translate TTS and the phone's own TTS as silent fallbacks).
-     *  Settings > KEYS & DATA. */
+     *  Translate TTS as its silent per-segment fallback) or "GEMINI"
+     *  (Gemini Live's own native voice). Settings > KEYS & DATA. */
     var voiceEngine: String
-        get() = str("voice_engine", "GEMINI")
+        get() = str("voice_engine", "GEMINI_TTS")
         set(value) = putStr("voice_engine", value)
 
-    /** One-time fail-safe migration ran (see migrateVoiceFailSafe). */
-    var voiceFailSafeMigrated: Boolean
-        get() = bool("voice_failsafe_migrated", false)
-        set(value) = putBool("voice_failsafe_migrated", value)
+    /** One-time Gemini-TTS migration ran (see migrateVoiceGeminiTts). */
+    var voiceGeminiTtsMigrated: Boolean
+        get() = bool("voice_gemini_tts_migrated", false)
+        set(value) = putBool("voice_gemini_tts_migrated", value)
 
     /**
-     * One-time migration for the fail-safe voice build: installs made
-     * under the old defaults already stored voiceEngine="EDGE", and on
-     * some networks the Edge endpoint is blocked outright — so on the
-     * FIRST start with this build, force the engine to GEMINI (the
-     * voice that provably connects) exactly once. A later manual switch
-     * back to EDGE in Settings is respected (the flag stays set).
-     * Call once at app start, after init.
+     * One-time migration for the Gemini-TTS build: on the FIRST start
+     * with this build, force the engine to GEMINI_TTS exactly once —
+     * earlier defaults (Edge) are blocked outright on some networks, and
+     * the Gemini TTS engine rides the Gemini key/connection that already
+     * works. A later manual engine switch in Settings is respected (the
+     * flag stays set). Call once at app start, after init.
      */
-    fun migrateVoiceFailSafe() {
-        if (!::sp.isInitialized || voiceFailSafeMigrated) return
-        voiceEngine = "GEMINI"
-        voiceFailSafeMigrated = true
+    fun migrateVoiceGeminiTts() {
+        if (!::sp.isInitialized || voiceGeminiTtsMigrated) return
+        voiceEngine = "GEMINI_TTS"
+        voiceGeminiTtsMigrated = true
     }
 
     /** Edge Neural voice that speaks her replies in EDGE engine mode. */
@@ -83,14 +82,15 @@ object Prefs {
         set(value) = putStr("edge_voice", value)
 
     /**
-     * True when the Edge transcript voice is selected: the Live session
-     * then asks for output transcription, Gemini's own audio is discarded
-     * unheard, and the reply's transcript text is spoken by Edge Neural
-     * TTS instead. Decided once at session start — never switched
-     * mid-session. False = Gemini Live's native voice speaks.
+     * True when a transcript voice engine is selected (GEMINI_TTS or
+     * EDGE): the Live session then asks for output transcription,
+     * Gemini's own audio is discarded unheard, and the reply's
+     * transcript text is spoken by the selected TTS speaker instead.
+     * Decided once at session start — never switched mid-session.
+     * False = Gemini Live's native voice speaks (engine GEMINI).
      */
     val transcriptVoiceEnabled: Boolean
-        get() = voiceEngine == "EDGE"
+        get() = voiceEngine == "EDGE" || voiceEngine == "GEMINI_TTS"
 
     var orbEnabled: Boolean
         get() = bool("orb_enabled", true)
