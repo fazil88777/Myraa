@@ -36,20 +36,6 @@ class GeminiLiveClient(private val listener: Listener) {
     companion object {
         const val MODEL = "models/gemini-3.1-flash-live-preview"
 
-        /**
-         * Half-cascade Live model for ElevenLabs (TEXT) mode. The native-audio
-         * models (MODEL above, gemini-3.8-live, the native-audio previews)
-         * REJECT responseModalities ["TEXT"] at setup — the server closes the
-         * socket with 1007 ("The requested combination of response modalities
-         * (TEXT) is not supported by the model") before setupComplete, which
-         * is exactly why EL mode could never connect. This id is the Gemini
-         * API's "2.5 Flash Live" half-cascade model: real clients run it with
-         * TEXT as the default response modality against this same endpoint,
-         * and Google's model list documents its output as "Text, audio".
-         * (Its sibling id "gemini-live-2.5-flash-preview" was SHUT DOWN on
-         * 2025-12-09 — do not "fix" this back to that one.)
-         */
-        const val TEXT_MODEL = "models/gemini-2.5-flash-live-preview"
         const val BASE_URL =
             "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key="
 
@@ -97,16 +83,13 @@ class GeminiLiveClient(private val listener: Listener) {
     private var socket: WebSocket? = null
 
     /**
-     * Set by MainViewModel BEFORE connect(): force the native-audio model +
-     * AUDIO modality even when ElevenLabs is configured. This is the
-     * one-time EL fallback — the TEXT setup was rejected, so the session
-     * runs on Gemini's own voice instead of ElevenLabs for this start.
+     * True when THIS session asked the server for outputAudioTranscription
+     * because ElevenLabs voices her replies (decided in sendSetup): the
+     * model's own audio is then discarded by MainViewModel and the
+     * transcript text is what gets spoken (by ElevenLabs) and shown in
+     * chat. False for a plain AUDIO session.
      */
-    var forceAudioMode: Boolean = false
-
-    /** Modality this client actually set up with (decided in sendSetup);
-     *  tags the resumption handles this session mints. */
-    private var sessionIsText: Boolean = false
+    private var elTranscriptionMode: Boolean = false
 
     fun connect(apiKey: String) {
         try {
@@ -611,19 +594,25 @@ class GeminiLiveClient(private val listener: Listener) {
                 )
             )
             // Voice pipeline branch: with an ElevenLabs key + voice id saved
-            // in Settings, the session runs in TEXT mode and her reply text
-            // is spoken by ElevenLabsSpeaker; otherwise native Live audio
-            // with the prebuilt voice, exactly as before. speechConfig is
-            // only valid for AUDIO, so it is omitted in TEXT mode.
-            // forceAudioMode (set by MainViewModel) is the one-time fallback
-            // after a TEXT setup was rejected: this attempt then runs
-            // exactly like a non-EL AUDIO session.
-            val elMode = com.myra.assistant.util.Prefs.elevenLabsEnabled && !forceAudioMode
-            sessionIsText = elMode
+            // in Settings, her replies are voiced by ElevenLabsSpeaker
+            // instead of Gemini's own voice. There is NO text-modality Live
+            // model on the Gemini API anymore (the half-cascade line was
+            // shut down — every current Live model is native-audio and
+            // REJECTS responseModalities ["TEXT"] at setup with close
+            // 1007), so the session stays on the native-audio MODEL with
+            // AUDIO modality and the usual speechConfig, exactly like a
+            // plain session. The only addition in EL mode is
+            // outputAudioTranscription (added below): the server then
+            // streams the reply's text alongside its audio, MainViewModel
+            // discards that audio unheard, and the transcript is what
+            // ElevenLabs speaks and what chat shows. Without ElevenLabs
+            // configured, the setup is byte-identical to the plain AUDIO
+            // session (no transcription is requested).
+            val elMode = com.myra.assistant.util.Prefs.elevenLabsEnabled
+            elTranscriptionMode = elMode
             val genConfig = JSONObject()
-                .put("responseModalities", JSONArray().put(if (elMode) "TEXT" else "AUDIO"))
-            if (!elMode) {
-                genConfig.put(
+                .put("responseModalities", JSONArray().put("AUDIO"))
+                .put(
                     "speechConfig",
                     JSONObject().put(
                         "voiceConfig",
@@ -633,13 +622,8 @@ class GeminiLiveClient(private val listener: Listener) {
                         )
                     )
                 )
-            }
             val setup = JSONObject()
-                // MODEL BY MODE: the native-audio MODEL rejects TEXT at
-                // setup (the server closes 1007 before setupComplete), so
-                // EL mode MUST use the half-cascade TEXT_MODEL. AUDIO mode
-                // (and the EL fallback) stays on MODEL.
-                .put("model", if (elMode) TEXT_MODEL else MODEL)
+                .put("model", MODEL)
                 .put(
                     "sessionResumption",
                     // Resume previous conversation context when we have a fresh
@@ -648,11 +632,11 @@ class GeminiLiveClient(private val listener: Listener) {
                     // always start a clean session instead of a zombie resume.
                     // Empty object = just enable resumption for this session.
                     // MODALITY RULE: a handle is only valid for the modality
-                    // that minted it — EL (TEXT) starts and the AUDIO
-                    // fallback never send one, and a handle minted by a TEXT
-                    // session must not poison a later AUDIO setup.
+                    // that minted it — every session now sets up AUDIO, and a
+                    // stale handle tagged "TEXT" (minted by the short-lived
+                    // TEXT-model build) must never be sent.
                     (
-                        if (elMode || forceAudioMode || resumptionHandleMode == "TEXT") null
+                        if (resumptionHandleMode == "TEXT") null
                         else takeResumptionHandle()
                         )?.let { JSONObject().put("handle", it) } ?: JSONObject()
                 )
@@ -887,6 +871,14 @@ class GeminiLiveClient(private val listener: Listener) {
                     JSONArray().put(JSONObject().put("functionDeclarations", fdArray))
                 )
 
+            // ElevenLabs mode only: also stream the model's reply text (a
+            // top-level setup field, sibling of inputAudioTranscription).
+            // handleMessage routes those deltas to the same text consumer
+            // the old TEXT mode used; the model's own audio is discarded.
+            if (elMode) {
+                setup.put("outputAudioTranscription", JSONObject())
+            }
+
             val json = JSONObject().put("setup", setup)
             socket?.send(json.toString())
         } catch (_: Exception) {
@@ -1002,7 +994,7 @@ class GeminiLiveClient(private val listener: Listener) {
             if (h.isNotBlank()) {
                 resumptionHandle = h
                 resumptionHandleAt = System.currentTimeMillis()
-                resumptionHandleMode = if (sessionIsText) "TEXT" else "AUDIO"
+                resumptionHandleMode = "AUDIO" // every session sets up AUDIO now
                 android.util.Log.d("GeminiLive", "saved resumption handle")
             }
             return
@@ -1030,9 +1022,25 @@ class GeminiLiveClient(private val listener: Listener) {
                         listener.onAudioChunk(Base64.decode(data, Base64.DEFAULT))
                     }
                     if (part.has("text")) {
-                        listener.onTextDelta(part.getString("text"))
+                        // ElevenLabs transcription mode: the reply text
+                        // comes from outputTranscription below (native-audio
+                        // turns carry no text parts anyway) — forwarding a
+                        // text part too would double the chat and the speech.
+                        if (!elTranscriptionMode) {
+                            listener.onTextDelta(part.getString("text"))
+                        }
                     }
                 }
+            }
+
+            // The model's spoken reply, transcribed by the server (only
+            // requested in ElevenLabs mode). These deltas are her words:
+            // they go to the same consumer the old TEXT mode fed — chat
+            // append + ElevenLabsSpeaker — while her Gemini audio above is
+            // discarded unheard by MainViewModel.
+            if (sc.has("outputTranscription")) {
+                val t = sc.getJSONObject("outputTranscription").optString("text")
+                if (t.isNotEmpty()) listener.onTextDelta(t)
             }
 
             if (sc.has("inputTranscription")) {

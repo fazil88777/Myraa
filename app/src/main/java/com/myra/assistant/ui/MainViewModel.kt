@@ -84,8 +84,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var tts: TextToSpeech? = null
     // ElevenLabs voice for THIS session (null in Gemini Live audio mode).
     // Created fresh in beginNewSession when key + voice id are saved in
-    // Settings; the Live session then runs in TEXT mode and this speaker
-    // voices the model's reply text sentence by sentence.
+    // Settings; the Live session stays in AUDIO mode but asks for output
+    // transcription, and this speaker voices the reply's transcript text
+    // sentence by sentence while Gemini's own audio is discarded.
     private var elSpeaker: ElevenLabsSpeaker? = null
     // Silence-fix state: auto-reconnect when the socket dies, and detect a
     // "half-dead" socket (mic hears the user, but no transcription ever arrives).
@@ -105,12 +106,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Last death's posted reason — friendly line PLUS the server's raw
     // code/reason — shown in the parked status and toasted on give-up.
     private var lastDeathInfo: String? = null
-    // Per manual start: the ONE EL TEXT -> AUDIO fallback already used.
-    private var elAudioFallbackUsed = false
-    // The current attempt chain runs AUDIO on the native-audio model even
-    // though ElevenLabs is configured (set by the fallback; auto-reconnects
-    // keep it, they never re-arm the fallback itself).
-    private var attemptForceAudio = false
     // The give-up toast fires once per failure chain.
     private var giveUpToastShown = false
     // Coroutine scope bound to the CURRENT session: cancelled on every teardown
@@ -293,12 +288,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         savedApiKey = apiKey
         // Fresh user-initiated start: past reconnect failures don't count.
         reconnectAttempts = 0
-        // A fresh manual start also re-arms the honest-failure bookkeeping
-        // and this start's ONE ElevenLabs TEXT -> AUDIO fallback.
+        // A fresh manual start also re-arms the honest-failure bookkeeping.
         lastDeathPreSetup = false
         lastDeathInfo = null
-        elAudioFallbackUsed = false
-        attemptForceAudio = false
         giveUpToastShown = false
         // User pressed the button: announce the welcome voice on connect.
         speakWelcomeOnConnect = true
@@ -359,9 +351,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val engine = AudioEngine()
         audio = engine
         // ElevenLabs mode is decided HERE, once, at session start (the
-        // client's setup reads the same flag for its TEXT modality) —
-        // changing the key in Settings mid-session never switches voices.
-        elSpeaker = if (Prefs.elevenLabsEnabled && !attemptForceAudio) {
+        // client's setup reads the same flag to add output transcription)
+        // — changing the key in Settings mid-session never switches voices.
+        elSpeaker = if (Prefs.elevenLabsEnabled) {
             try {
                 ElevenLabsSpeaker(getApplication())
             } catch (_: Exception) {
@@ -424,9 +416,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 modelRespondedThisSession = true
                 // The session proved itself healthy — reconnect failures stop counting.
                 reconnectAttempts = 0
-                try {
-                    audio?.playPcm24k(pcm24k)
-                } catch (_: Exception) {
+                // ElevenLabs mode: Gemini's own audio is NEVER played — her
+                // words arrive as output transcription and ElevenLabs speaks
+                // them instead. Only the activity bookkeeping above runs,
+                // exactly as in audio mode, so the watchdog and the
+                // reconnect logic can't tell the difference.
+                if (elSpeaker == null) {
+                    try {
+                        audio?.playPcm24k(pcm24k)
+                    } catch (_: Exception) {
+                    }
                 }
             }
 
@@ -437,8 +436,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 modelRespondedThisSession = true
                 reconnectAttempts = 0
                 appendModelDelta(text)
-                // ElevenLabs mode: stream the same text to the TTS speaker,
-                // which cuts it into sentences and speaks them in order.
+                // ElevenLabs mode: this text is the output transcription of
+                // her spoken reply — stream it to the TTS speaker, which
+                // cuts it into sentences and speaks them in order.
                 try {
                     elSpeaker?.enqueueDelta(text)
                 } catch (_: Exception) {
@@ -555,9 +555,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         })
         client = c
-        // An EL fallback attempt must set up AUDIO on the native-audio
-        // model even though ElevenLabs is configured (see sendSetup).
-        c.forceAudioMode = attemptForceAudio
         c.connect(apiKey)
         // Re-hook screen frames to the new client if sharing was already on
         if (_isSharing.value == true) {
@@ -573,9 +570,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Single funnel for "the live session just died" (socket closed OR a
      * server/setup error): records the honest reason (the client's friendly
-     * line already carries the RAW close code + server words), runs the
-     * one-time ElevenLabs TEXT -> AUDIO fallback when a TEXT setup was
-     * rejected, and otherwise hands over to the normal reconnect policy.
+     * line already carries the RAW close code + server words) and hands
+     * over to the normal reconnect policy. ElevenLabs mode can no longer
+     * kill a session — it rides on the same AUDIO setup as always, so
+     * there is no modality fallback left to run here.
      */
     private fun onSessionDied(info: String, fromServerClose: Boolean) {
         sessionConnecting = false
@@ -583,31 +581,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // instead of no-op'ing on the stale "connected" flag.
         postConnected(false)
         lastDeathInfo = info
-        val diedPreSetup = !setupCompletedThisSession
-        lastDeathPreSetup = diedPreSetup
-
-        // ElevenLabs fallback: the TEXT setup was rejected BEFORE the
-        // session ever came up (a server close, or an explicit setup/server
-        // error — a plain transport failure like no-internet does NOT
-        // qualify, switching modality cannot fix that). Retry ONCE, right
-        // away, in AUDIO on the native-audio model so he still gets a
-        // working session with Gemini's own voice. Auto-reconnects never
-        // re-arm this; if the AUDIO attempt also dies pre-setup, the
-        // normal capped give-up applies.
-        val setupRejected = fromServerClose ||
-            info.startsWith("Setup rejected:") || info.startsWith("Server error:")
-        if (diedPreSetup && setupRejected && Prefs.elevenLabsEnabled &&
-            !attemptForceAudio && !elAudioFallbackUsed
-        ) {
-            val key = savedApiKey
-            if (key != null) {
-                elAudioFallbackUsed = true
-                attemptForceAudio = true
-                postToast("ElevenLabs ke liye TEXT model nahi mila — Live awaaz chala di hai")
-                beginNewSession(key)
-                return
-            }
-        }
+        lastDeathPreSetup = !setupCompletedThisSession
         _statusText.postValue(info)
         scheduleReconnect()
     }
