@@ -165,6 +165,15 @@ class BorderOverlayService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
+        // Android 12+ "untrusted touch" protection drops EVERY tap that
+        // passes through a TYPE_APPLICATION_OVERLAY window whose opacity
+        // is above 0.8 — even when FLAG_NOT_TOUCHABLE is set. At the
+        // default alpha 1.0 this full-screen window silently swallowed
+        // all touches in other apps (Fazil's bug report). 0.8 is the
+        // documented maximum opacity at which taps pass through; the
+        // border is drawn on mostly transparent pixels, so it still
+        // looks just as bright.
+        params.alpha = 0.8f
         try {
             wm.addView(view, params)
             borderView = view
