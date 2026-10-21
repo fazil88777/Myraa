@@ -250,6 +250,34 @@ object ToolHandler {
                         "OK: mood note ho gaya — ab tum ${m.uppercase()} mehsoos kar rahi ho. Apne lehje aur boli mein yehi rang rakho, aur kaam hamesha ki tarah poora karo."
                     else "ERROR: ye mood samajh nahi aaya — HAPPY, ROMANTIC, SAD, CRYING, PLAYFUL, HURT ya CALM bhejo."
                 }
+                "search_memory" -> {
+                    val q = args.optString("query", "").trim()
+                    if (q.isEmpty()) "ERROR: kya dhoondun? query khaali hai."
+                    else com.myra.assistant.util.MyraMemory.searchMemory(q)
+                }
+                "save_project" -> {
+                    val n = args.optString("name", "").trim()
+                    val d = args.optString("details", "").trim()
+                    if (n.isEmpty()) "ERROR: project ka naam nahi diya — kya save karun?"
+                    else if (com.myra.assistant.util.MyraMemory.saveProject(n, d))
+                        "OK: project save kar liya — '$n' (status: chal raha hai). Ab iska haal hamesha yaad rahega."
+                    else "ERROR: project save nahi ho saka."
+                }
+                "update_project_status" -> {
+                    val n = args.optString("name", "").trim()
+                    val s = args.optString("status", "").trim()
+                    if (n.isEmpty() || s.isEmpty()) "ERROR: project ka naam aur naya status dono chahiye."
+                    else if (com.myra.assistant.util.MyraMemory.updateProjectStatus(n, s))
+                        "OK: '$n' ka status update kar diya — ab: $s."
+                    else "OK: is naam ka koi saved project nahi mila — pehle save_project se save karo."
+                }
+                "save_family_fact" -> {
+                    val f = args.optString("fact", "").trim()
+                    if (f.isEmpty()) "ERROR: koi baat nahi di — kya yaad rakhun?"
+                    else if (com.myra.assistant.util.MyraMemory.saveFamilyFact(f))
+                        "OK: ghar walon ki ye baat yaad kar li — '$f'. Agli baar khud follow-up karungi."
+                    else "OK: ye baat pehle se yaad hai."
+                }
                 "web_search" -> webSearch(args.optString("query"))
                 "read_webpage" -> readWebpage(args.optString("url"))
                 "open_website" -> openWebsite(args.optString("url"), context)

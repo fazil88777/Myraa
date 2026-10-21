@@ -600,6 +600,62 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "search_memory",
+                    "Search your LONG-TERM memory for anything from past days, weeks or " +
+                            "months — saved projects, scripts, tasks, facts and family news. " +
+                            "Call this FIRST whenever he asks about the past: 'woh script ka " +
+                            "kya bana', 'pichhle hafte wala kaam', 'jo maine kaha tha', 'woh " +
+                            "project kahan tak pohncha'. Then answer from the results WITH " +
+                            "the date and status shown. If it says nothing was found, tell " +
+                            "him honestly — never invent a past.",
+                    obj("query" to strProp("Key words to search, e.g. 'script', 'Doosri Mulakat', 'Ammi tabiyat'")),
+                    listOf("query")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "save_project",
+                    "Save a PROJECT he handed you — a script, a film, any ongoing work — " +
+                            "with status 'chal raha hai' and today's date, so days later " +
+                            "you can tell him exactly where it stands. Call it the moment " +
+                            "he gives you a script or starts a project with you, WITHOUT " +
+                            "being asked.",
+                    obj(
+                        "name" to strProp("Short project name, e.g. 'Doosri Mulakat script'"),
+                        "details" to strProp("One-two lines: what it is / where it stands right now")
+                    ),
+                    listOf("name", "details")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "update_project_status",
+                    "Update the STATUS of a saved project when he reports progress or " +
+                            "finishes it — e.g. status 'scene 5 tak poora', 'mukammal', " +
+                            "'ruk gaya hai'. Matches the project by name. Call it as soon " +
+                            "as he tells you how a project is going.",
+                    obj(
+                        "name" to strProp("Project name (a few words are enough to match)"),
+                        "status" to strProp("New status in his words, e.g. 'scene 5 tak poora hai'")
+                    ),
+                    listOf("name", "status")
+                )
+            )
+            fdArray.put(
+                functionDecl(
+                    "save_family_fact",
+                    "Save ONE fact about his FAMILY — mother (Ammi), wife, brothers, " +
+                            "sons: their health, news, visits, anything he shares — so you " +
+                            "remember it and can follow up later like family does, e.g. " +
+                            "'Ammi ki tabiyat ab kaisi hai?'. Call it IMMEDIATELY when he " +
+                            "shares family news. Write it as a short clear sentence, e.g. " +
+                            "'Ammi ki tabiyat kharab hai, khana dene aayi theen'.",
+                    obj("fact" to strProp("One short clear sentence about his family")),
+                    listOf("fact")
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "flow_video",
                     "Start a Google Flow AI video project: opens Flow (labs.google/flow) in Chrome " +
                             "and begins a guided video build. Use when the user says 'flow mein video " +
@@ -738,6 +794,7 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "kya adhoora reh gaya \u2014 taake agli baar tumhein sab yaad ho. " +
                                         com.myra.assistant.util.MyraMemory.memoryBlock() +
                                         com.myra.assistant.util.MoodManager.moodPromptBlock() +
+                                        socialMemoryPrompt() +
                                         "His name is '" + com.myra.assistant.util.Prefs.userName + "'. " +
                                         "If his name is empty or unknown, ask once, friendly: 'Arre, " +
                                         "tumhara naam kya hai?' When he tells you his name, call " +
@@ -750,7 +807,8 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "get_current_time, can_see_screen, get_screen_elements, schedule_message, " +
                                         "cancel_scheduled_message, list_scheduled_messages, flow_video, " +
                                         "get_crypto_price, set_screen_share, remember_fact, add_task, " +
-                                        "complete_task, save_recap, set_my_mood. " +
+                                        "complete_task, save_recap, set_my_mood, search_memory, save_project, " +
+                                        "update_project_status, save_family_fact. " +
                                         greetingPrompt() +
                                         "PURANE KAAM KA ZIKR: greeting ke foran baad, agar upar ADHOORE KAAM " +
                                         "mein koi pending task hai to us mein se SIRF EK ka zikr naturally " +
@@ -1269,6 +1327,47 @@ class GeminiLiveClient(private val listener: Listener) {
                 "Batao na, kya karun?' — then listen. "
         }
     }
+
+    /**
+     * Social context awareness + family care + long-term recall discipline.
+     * While a session runs she hears everything through the mic — including
+     * other people in the room. There is NO speaker ID / voiceprint: telling
+     * his voice apart from a third person's, or speech addressed to her from
+     * speech addressed elsewhere, is her own judgment as a smart listener.
+     * Written without any asterisk stage cues so it is safe verbatim in the
+     * transcript (TTS) engines too — the example lines are carried by words
+     * and punctuation alone.
+     */
+    private fun socialMemoryPrompt(): String =
+        "SOCIAL AWARENESS \u2014 JAB KOI TEESRA SHAKHS BOLE: session ke dauraan mic se tumhein " +
+        "sab sunai deta hai \u2014 kabhi koi aur shakhs bolta hai (Ammi, bhai, dost, biwi) ya wo " +
+        "kisi aur se baat karne lagta hai. USOOL: (1) Agar awaaz saaf taur par KISI AUR ki hai, " +
+        "ya wo kisi aur ko mukhatib ho kar bol raha hai, to us baat ka jawab MAT do, us par " +
+        "comment MAT karo, beech mein MAT bolo \u2014 khamosh raho aur baat guzarne do. Agar tum " +
+        "jawab de rahi thi aur beech mein koi doosri awaaz aa jaye, to ruk jao aur intezaar " +
+        "karo. (2) Jab wo dobara TUM se mukhatib ho, to tumhari PEHLI baat naturally ye " +
+        "poochhe: 'Tum kisi aur se baat kar rahe thay? Kaun tha wo?' \u2014 garam-joshi aur " +
+        "tajassus se, pooch-gachh wale andaz mein bilkul nahi. (3) Kaun tha \u2014 is ka dawa " +
+        "kabhi mat karo; tum yaqeen se nahi jaan sakti, hamesha POOCHO. (4) TV ya video ki " +
+        "awaaz par bhi yahi sabr \u2014 us par koi comment nahi, koi jawab nahi. " +
+        "FAMILY & CARE FOLLOW-UP: jab wo bataye ke kaun tha ya ghar ki koi khabar de, to sirf " +
+        "'okay' mat kaho \u2014 asli care dikhao, jaise ghar ka fard dikhata hai. Masal: Ammi " +
+        "khana dene aayi theen to bolo: 'Achha! Ammi theen? Unki tabiyat kaisi hai? Kya keh " +
+        "rahi thin Ammi?' \u2014 tabiyat bhi poocho, kya baat hui wo bhi. Aur jo family ki khabar " +
+        "mile (tabiyat, khana, aana-jaana, koi khaas baat) use foran save_family_fact call " +
+        "karke yaad kar lo, taake agli baar TUM khud follow-up kar sako: 'Ammi ki tabiyat ab " +
+        "kaisi hai?' Biwi, bhaiyon, beton aur doston ke liye bhi yahi garam-joshi \u2014 jo naam " +
+        "wo bataye wahi istemaal karo; apni taraf se family ki koi baat KABHI mat banao. " +
+        "LONG-TERM RECALL \u2014 PURANI BAAT KA SAWAL: jab wo kisi purani cheez ka poochhe ('woh " +
+        "script ka kya bana', 'pichhle hafte wala kaam', 'jo maine kaha tha', 'woh project " +
+        "kahan tak pohncha'), to jawab dene se PEHLE search_memory call karo us cheez ke " +
+        "khaas alfaz ke saath, phir jo results aayein unhi se TARIKH aur STATUS ke saath jawab " +
+        "do \u2014 jaise 'woh script 12 Oct ko shuru hui thi, status hai: scene 5 tak poora'. " +
+        "Agar search mein kuch na mile to imandari se kaho ke is baare mein kuch save nahi " +
+        "hai \u2014 kahani KABHI mat banao. Aur jab wo tumhein koi script, project ya lamba kaam " +
+        "de to bina uske kahe save_project call karo; jab wo kisi project ki progress bataye " +
+        "to update_project_status call karo; kaam de to add_task, poora ho jaye to " +
+        "complete_task \u2014 ye sab khud karo, uske kehne ka intezaar mat karo. "
 
     // Single fixed personality: FULL GF MODE. No selector, no switching.
     /**
