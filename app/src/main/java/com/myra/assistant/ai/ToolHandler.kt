@@ -243,6 +243,13 @@ object ToolHandler {
                         "OK: session ka khulasa save ho gaya — agli baar yaad rahega."
                     else "ERROR: save nahi ho saka."
                 }
+                "set_my_mood" -> {
+                    val m = args.optString("mood", "").trim()
+                    if (m.isEmpty()) "ERROR: mood nahi diya — kaisa mehsoos kar rahi ho?"
+                    else if (com.myra.assistant.util.MoodManager.setMoodFromTool(m))
+                        "OK: mood note ho gaya — ab tum ${m.uppercase()} mehsoos kar rahi ho. Apne lehje aur boli mein yehi rang rakho, aur kaam hamesha ki tarah poora karo."
+                    else "ERROR: ye mood samajh nahi aaya — HAPPY, ROMANTIC, SAD, CRYING, PLAYFUL, HURT ya CALM bhejo."
+                }
                 "web_search" -> webSearch(args.optString("query"))
                 "read_webpage" -> readWebpage(args.optString("url"))
                 "open_website" -> openWebsite(args.optString("url"), context)

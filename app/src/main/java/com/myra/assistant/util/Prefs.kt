@@ -37,6 +37,13 @@ object Prefs {
         if (::sp.isInitialized) sp.edit().putFloat(key, value).apply()
     }
 
+    private fun long(key: String, def: Long): Long =
+        if (::sp.isInitialized) sp.getLong(key, def) else def
+
+    private fun putLong(key: String, value: Long) {
+        if (::sp.isInitialized) sp.edit().putLong(key, value).apply()
+    }
+
     var apiKey: String
         get() = str("api_key", "")
         set(value) = putStr("api_key", value)
@@ -137,4 +144,26 @@ object Prefs {
     var fullyOff: Boolean
         get() = bool("fully_off", false)
         set(value) = putBool("fully_off", value)
+
+    // ---------- Emotional state (MoodManager) ----------
+
+    /** Epoch ms of the last real interaction (session start / connect / end). 0 = never. */
+    var lastInteractionMs: Long
+        get() = long("last_interaction_ms", 0L)
+        set(value) = putLong("last_interaction_ms", value)
+
+    /** Current mood name (MoodManager.Mood enum name). */
+    var moodName: String
+        get() = str("mood_name", "CALM")
+        set(value) = putStr("mood_name", value)
+
+    /** Epoch ms when the current mood was set. */
+    var moodUpdatedMs: Long
+        get() = long("mood_updated_ms", 0L)
+        set(value) = putLong("mood_updated_ms", value)
+
+    /** Gap in hours that triggered a MISSING_USER mood (0 = not gap-triggered). */
+    var moodGapHours: Long
+        get() = long("mood_gap_hours", 0L)
+        set(value) = putLong("mood_gap_hours", value)
 }

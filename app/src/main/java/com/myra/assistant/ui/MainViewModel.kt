@@ -240,6 +240,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         reconnectAttempts = 0
         // User pressed the button: announce the welcome voice on connect.
         speakWelcomeOnConnect = true
+        // Emotional state: work out her mood BEFORE the new session's system
+        // prompt is built — a >= 12h gap makes her start in the lonely
+        // "Missing You" mood (see MoodManager); this also records the
+        // interaction time. Auto-reconnects/rotations skip this on purpose:
+        // they continue the same conversation, they are not a new arrival.
+        try {
+            com.myra.assistant.util.MoodManager.onUserSessionStart()
+        } catch (_: Exception) {
+        }
         beginNewSession(apiKey)
     }
 
@@ -292,6 +301,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             override fun onSetupComplete() {
                 if (gen != sessionGen) return
                 postConnected(true)
+                // A live connection counts as an interaction for the
+                // Missing-You gap calculation.
+                try {
+                    com.myra.assistant.util.MoodManager.touchInteraction()
+                } catch (_: Exception) {
+                }
                 reconnectScheduled = false
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
@@ -636,6 +651,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Tear down audio + socket without marking a manual stop. */
     private fun stopSessionInternal() {
+        // Session ending = the last interaction, for the Missing-You gap.
+        try {
+            com.myra.assistant.util.MoodManager.touchInteraction()
+        } catch (_: Exception) {
+        }
         CameraVision.sessionLive = false
         CameraVision.refresh(getApplication())
         CameraVision.onFrame = null
