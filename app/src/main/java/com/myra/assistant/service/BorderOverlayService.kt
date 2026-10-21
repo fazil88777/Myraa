@@ -77,7 +77,7 @@ object BorderOverlay {
         sessionLive = live
         val app = context.applicationContext
         val want = live && Prefs.neonLighting && Prefs.floatingBorder &&
-            PermissionHelper.canDrawOverlays(app)
+            PermissionHelper.canDrawOverlay(app)
         val intent = Intent(app, BorderOverlayService::class.java)
         try {
             if (want) {
@@ -148,7 +148,7 @@ class BorderOverlayService : Service() {
     private fun updateOverlay() {
         val show = BorderOverlay.sessionLive && !BorderOverlay.appInForeground &&
             Prefs.neonLighting && Prefs.floatingBorder &&
-            PermissionHelper.canDrawOverlays(this)
+            PermissionHelper.canDrawOverlay(this)
         if (show) addBorder() else removeBorder()
     }
 

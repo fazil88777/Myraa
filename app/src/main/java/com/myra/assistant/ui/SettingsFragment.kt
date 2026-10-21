@@ -105,7 +105,7 @@ class SettingsFragment : Fragment() {
             if (updating) return@setOnCheckedChangeListener
             Prefs.floatingBorder = on
             // Turning it ON without the draw-over-apps permission: ask now.
-            if (on && !PermissionHelper.canDrawOverlays(act)) {
+            if (on && !PermissionHelper.canDrawOverlay(act)) {
                 PermissionHelper.openOverlaySettings(act)
             }
             (activity as? MainActivity)?.refreshBorderState()

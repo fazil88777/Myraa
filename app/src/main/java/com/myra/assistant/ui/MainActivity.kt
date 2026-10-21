@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity() {
             // Session just started: the floating border needs the
             // draw-over-apps permission. Ask once per session start.
             if (live && !wasConnected && Prefs.floatingBorder &&
-                !PermissionHelper.canDrawOverlays(this)
+                !PermissionHelper.canDrawOverlay(this)
             ) {
                 toast("Background border ke liye \"dusri apps ke upar dikhao\" permission chahiye")
                 PermissionHelper.openOverlaySettings(this)
