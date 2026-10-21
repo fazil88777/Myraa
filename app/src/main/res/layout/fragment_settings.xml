@@ -556,6 +556,57 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/rowLaptopCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/settings_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Laptop Pairing Code"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Laptop control (maira_agent script) ke liye"
+                    android:textColor="#788C9B"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/rowLaptopCodeValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Not set"
+                android:textColor="#00E5FF"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="8dp"
+            android:text="Laptop wali script main bhi yehi code dalna hai — isay password ki tarah rakho"
+            android:textColor="#788C9B"
+            android:textSize="12sp" />
+
+        <LinearLayout
             android:id="@+id/rowVoiceEngine"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

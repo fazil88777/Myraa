@@ -210,6 +210,17 @@ object Prefs {
         set(value) = putBool("pc_enabled", value)
 
     /**
+     * Laptop Control pairing code: the shared secret between this app
+     * and maira_agent.py running on his Windows laptop. The MQTT topics
+     * are derived from it, and the laptop agent double-checks it in
+     * every payload — treat it like a password. Empty = laptop control
+     * is OFF (zero behavior change). Settings > KEYS & DATA.
+     */
+    var laptopPairingCode: String
+        get() = str("laptop_pairing_code", "")
+        set(value) = putStr("laptop_pairing_code", value)
+
+    /**
      * Full voice shutdown: MYRA stays completely dead (no session, no
      * watchdog, no auto-reconnect, no background restarts) until the user
      * manually opens the app again, which clears this flag.

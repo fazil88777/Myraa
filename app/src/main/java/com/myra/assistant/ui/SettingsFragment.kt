@@ -161,6 +161,18 @@ class SettingsFragment : Fragment() {
                 toast("API key saved")
             }
         }
+        view.findViewById<View>(R.id.rowLaptopCode).setOnClickListener {
+            textDialog("Laptop Pairing Code", Prefs.laptopPairingCode, "Lamba random code — password ki tarah rakho") {
+                Prefs.laptopPairingCode = it
+                // Warm the laptop link up with the new code right away.
+                try {
+                    com.myra.assistant.util.LaptopLink.connectIfNeeded()
+                } catch (_: Exception) {
+                }
+                refreshAll()
+                toast("Laptop pairing code saved")
+            }
+        }
         view.findViewById<View>(R.id.rowVoiceEngine).setOnClickListener {
             val labels = listOf("Gemini TTS (Tara jaisi)", "Edge TTS (Free)", "Gemini Live awaaz")
             val keys = listOf("GEMINI_TTS", "EDGE", "GEMINI")
@@ -318,6 +330,8 @@ class SettingsFragment : Fragment() {
                 Prefs.assistantName.ifBlank { "MYRA" }
             v.findViewById<TextView>(R.id.rowApiKeyValue).text =
                 if (Prefs.apiKey.isBlank()) "Not set" else "(set ✓)"
+            v.findViewById<TextView>(R.id.rowLaptopCodeValue).text =
+                if (Prefs.laptopPairingCode.isBlank()) "Not set" else "(set ✓)"
             v.findViewById<TextView>(R.id.rowVoiceEngineValue).text =
                 when (Prefs.voiceEngine) {
                     "GEMINI" -> "Gemini Live awaaz"

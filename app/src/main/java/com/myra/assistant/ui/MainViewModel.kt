@@ -356,6 +356,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         lastModelResponseAt = System.currentTimeMillis()
         pendingInputMsgIndex = -1
         ensureWatchdog()
+        // Laptop Control: warm up the free MQTT link so her first laptop
+        // command is instant. No-op when no pairing code is set (the
+        // feature is fully off then — zero behavior change).
+        try {
+            com.myra.assistant.util.LaptopLink.connectIfNeeded()
+        } catch (_: Exception) {
+        }
         _statusText.postValue("Connecting...")
         val engine = AudioEngine()
         audio = engine

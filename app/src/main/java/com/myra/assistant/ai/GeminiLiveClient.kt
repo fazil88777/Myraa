@@ -701,6 +701,37 @@ class GeminiLiveClient(private val listener: Listener) {
             )
             fdArray.put(
                 functionDecl(
+                    "control_laptop",
+                    "Control his Windows LAPTOP/PC remotely (only works when he has " +
+                            "set a Laptop Pairing Code in Settings and the maira_agent " +
+                            "script is running on the laptop). Use this whenever he talks " +
+                            "about his laptop/PC or gives laptop commands: 'laptop band " +
+                            "kardo', 'PC par folder banao', 'laptop par scroll karo', 'ye " +
+                            "likho', 'volume barhao', 'Chrome kholo', 'screen par kya hai " +
+                            "dikhao'. Pick the ONE action that matches and fill the params " +
+                            "that apply. IMPORTANT: for shutdown, restart and delete_file " +
+                            "you must FIRST confirm with him out loud ('Pakka laptop band " +
+                            "kar doon?') and call this only after he says yes. After " +
+                            "capture_screen the laptop's screen picture is shown to you " +
+                            "in the session — describe what you see naturally.",
+                    obj(
+                        "action" to strProp("One of: shutdown, restart, sleep, volume_up, volume_down, mute, create_folder, delete_file, rename_file, list_directory, open_browser, open_url, scroll_up, scroll_down, switch_tab, close_tab, type_text, press_key, mouse_click, capture_screen, open_app"),
+                        "path" to strProp("Optional: folder/file path or place — 'desktop', 'documents', 'downloads', or a full path like 'C:\\Users\\Fazil\\Desktop\\notes.txt'"),
+                        "name" to strProp("Optional: folder name for create_folder, e.g. 'Test'"),
+                        "new_name" to strProp("Optional: new name for rename_file"),
+                        "text" to strProp("Optional: text for type_text — typed on the laptop's active window"),
+                        "url" to strProp("Optional: website URL for open_url, e.g. 'youtube.com'"),
+                        "app" to strProp("Optional: app name for open_app, e.g. 'chrome', 'vscode', 'vlc', 'notepad', 'premiere'"),
+                        "key" to strProp("Optional: key for press_key, e.g. 'enter', 'esc', 'ctrl+s', 'alt+tab'"),
+                        "amount" to intProp("Optional: steps for volume/scroll (default 5)"),
+                        "x" to intProp("Optional: mouse_click horizontal pixel position"),
+                        "y" to intProp("Optional: mouse_click vertical pixel position")
+                    ),
+                    listOf("action")
+                )
+            )
+            fdArray.put(
+                functionDecl(
                     "flow_video",
                     "Start a Google Flow AI video project: opens Flow (labs.google/flow) in Chrome " +
                             "and begins a guided video build. Use when the user says 'flow mein video " +
@@ -855,8 +886,21 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "get_crypto_price, set_screen_share, remember_fact, add_task, " +
                                         "complete_task, save_recap, set_my_mood, search_memory, save_project, " +
                                         "update_project_status, save_family_fact, schedule_checkin, " +
-                                        "save_secret, search_secrets. " +
+                                        "save_secret, search_secrets, control_laptop. " +
                                         greetingPrompt() +
+                                        "LAPTOP CONTROL: uske paas ek Windows laptop bhi hai jise tum is phone se " +
+                                        "control kar sakti ho (control_laptop tool). Jab wo laptop ya PC ka " +
+                                        "zikr kare ya laptop wali hidayat de (band kardo, folder banao, scroll " +
+                                        "karo, ye likho, volume barhao, app kholo, screen dikhao), to phone ke " +
+                                        "tools ki jagah control_laptop use karo. SAKHT RULE: shutdown, restart " +
+                                        "aur delete_file se PEHLE hamesha moun se ek dafa confirm karo (jaise " +
+                                        "'Pakka laptop band kar doon?') — uske haan kehne ke BAAD hi tool call " +
+                                        "karo. capture_screen ke baad laptop ki screen ki tasveer tumhein " +
+                                        "session mein nazar aayegi — jo dikhai de raha hai woh naturally batao. " +
+                                        "list_directory ka result use sunao. Agar tool kahe ke pairing code " +
+                                        "set nahi hai, to use pyaar se kaho Settings mein KEYS & DATA ke neeche " +
+                                        "Laptop Pairing Code dal de — laptop wali script mein bhi wohi code " +
+                                        "hona chahiye. " +
                                         "PURANE KAAM KA ZIKR: greeting ke foran baad, agar upar ADHOORE KAAM " +
                                         "mein koi pending task hai to us mein se SIRF EK ka zikr naturally " +
                                         "karo, jaise 'acha suno, tum ne kaha tha video generate karni hai " +

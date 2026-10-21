@@ -298,6 +298,7 @@ object ToolHandler {
                     if (q.isEmpty()) "ERROR: query khaali hai — vault mein kya dhoondun?"
                     else com.myra.assistant.util.SecretVault.searchSecrets(q)
                 }
+                "control_laptop" -> controlLaptop(args)
                 "web_search" -> webSearch(args.optString("query"))
                 "read_webpage" -> readWebpage(args.optString("url"))
                 "open_website" -> openWebsite(args.optString("url"), context)
@@ -670,6 +671,81 @@ object ToolHandler {
      * message arrives later as a notification (CheckInReceiver) — she
      * cannot speak first, this is how she reaches out.
      */
+    /**
+     * Laptop Control: publishes one command to his Windows laptop over the
+     * free EMQX MQTT broker (see util/LaptopLink) and, for the two
+     * request/response actions, waits for the laptop's answer.
+     * - list_directory: returns the folder listing as text.
+     * - capture_screen: the laptop's JPEG comes back base64; it is injected
+     *   into this Live session as a video frame (the exact same path camera
+     *   frames take), so she can describe what is on the laptop screen.
+     * - everything else: fire-and-forget.
+     */
+    private fun controlLaptop(args: JSONObject): String {
+        if (com.myra.assistant.util.Prefs.laptopPairingCode.isBlank()) {
+            return "ERROR: Laptop pairing code set NAHI hai — user se sweetly kaho: " +
+                    "pehle Settings > KEYS & DATA mein 'Laptop Pairing Code' daley, aur " +
+                    "bilkul wahi code laptop par chalne wali maira_agent script mein bhi " +
+                    "hona chahiye. Uske baad laptop control chalega."
+        }
+        val action = args.optString("action").trim()
+        if (action.isEmpty()) return "ERROR: action khaali hai — laptop par kya karna hai?"
+        val payload = JSONObject()
+        payload.put("action", action)
+        for (k in listOf("path", "name", "new_name", "text", "url", "app", "key")) {
+            val v = args.optString(k).trim()
+            if (v.isNotEmpty()) payload.put(k, v)
+        }
+        if (args.has("amount")) payload.put("amount", args.optInt("amount"))
+        if (args.has("x")) payload.put("x", args.optInt("x"))
+        if (args.has("y")) payload.put("y", args.optInt("y"))
+        return when (action) {
+            "list_directory" -> when (val r =
+                com.myra.assistant.util.LaptopLink.sendCommand(payload, 10_000)) {
+                is com.myra.assistant.util.LaptopLink.Result.Ok -> {
+                    val text = r.json.optString("text")
+                    if (text.isNotBlank()) "OK: laptop ki directory listing:\n$text"
+                    else "OK: laptop ne jawab bheja, lekin listing khaali hai (folder khaali hai)."
+                }
+                is com.myra.assistant.util.LaptopLink.Result.Failed ->
+                    laptopFailText(r.reason)
+            }
+            "capture_screen" -> when (val r =
+                com.myra.assistant.util.LaptopLink.sendCommand(payload, 15_000)) {
+                is com.myra.assistant.util.LaptopLink.Result.Ok -> {
+                    val b64 = r.json.optString("image_b64")
+                    if (b64.isBlank()) {
+                        "ERROR: laptop se screen ki tasveer NAHI aayi — agent theek se " +
+                                "chala hua hai? Dobara try karo."
+                    } else {
+                        com.myra.assistant.util.MyraBridge.viewModel?.sendVideoFrame(b64)
+                        "OK: screen ki tasveer bhej di hai — jo dikhai de raha hai woh batao"
+                    }
+                }
+                is com.myra.assistant.util.LaptopLink.Result.Failed ->
+                    laptopFailText(r.reason)
+            }
+            else -> when (val r =
+                com.myra.assistant.util.LaptopLink.sendCommand(payload, 0)) {
+                is com.myra.assistant.util.LaptopLink.Result.Ok ->
+                    "OK: laptop ko bhej diya ($action)"
+                is com.myra.assistant.util.LaptopLink.Result.Failed ->
+                    laptopFailText(r.reason)
+            }
+        }
+    }
+
+    /** Honest laptop-link failure wording for the model to relay. */
+    private fun laptopFailText(reason: String): String = when {
+        reason.startsWith("timeout") ->
+            "ERROR: laptop ne waqt par jawab NAHI diya — user se kaho check kare: " +
+                    "laptop par maira_agent chala hua hai? Internet on hai? Pairing " +
+                    "code dono taraf bilkul ek jaisa hai?"
+        else ->
+            "ERROR: laptop se rabta NAHI ho raha ($reason) — agent chala hua hai? " +
+                    "pairing code theek hai?"
+    }
+
     private fun scheduleCheckin(
         topic: String,
         message: String,
