@@ -1,7 +1,6 @@
 package com.myra.assistant.util
 
 import android.util.Log
-import org.eclipse.paho.client.mqttv3.DisconnectedBufferOptions
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended
 import org.eclipse.paho.client.mqttv3.MqttClient
@@ -213,13 +212,6 @@ object LaptopLink {
                 override fun deliveryComplete(token: IMqttDeliveryToken?) {
                 }
             })
-            try {
-                c.setBufferOpts(DisconnectedBufferOptions().apply {
-                    isBufferEnabled = true
-                    bufferSize = 20
-                })
-            } catch (_: Exception) {
-            }
             c.connect(connectOptions())
             client = c
             activeCode = code
