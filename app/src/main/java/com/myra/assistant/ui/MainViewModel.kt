@@ -52,6 +52,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _toastEvent.postValue(ToastEvent(++toastSeq, message))
     }
 
+    /** ElevenLabsSpeaker synthesis failure (HTTP code, -1 = network/other):
+     *  surface it ONCE per session so a bad key scope / Voice ID / quota is
+     *  visible on screen instead of silently dropped segments. */
+    private fun notifyElError(code: Int) {
+        if (elErrorToastShown) return
+        elErrorToastShown = true
+        postToast("ElevenLabs awaaz fail (HTTP $code) — key / Voice ID check karo")
+    }
+
     private val _isConnected = MutableLiveData(false)
     val isConnected: LiveData<Boolean> = _isConnected
 
@@ -108,6 +117,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var lastDeathInfo: String? = null
     // The give-up toast fires once per failure chain.
     private var giveUpToastShown = false
+    // ElevenLabs synthesis-failure toast fires ONCE per session; the reply
+    // segments and the greeting's speakOnce share this flag, so whichever
+    // path fails first shows the real HTTP code exactly once. Reset every
+    // beginNewSession, next to the speaker's creation.
+    @Volatile
+    private var elErrorToastShown = false
     // Coroutine scope bound to the CURRENT session: cancelled on every teardown
     // so a tool call from the dying session can never answer the new socket.
     private var sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -353,9 +368,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // ElevenLabs mode is decided HERE, once, at session start (the
         // client's setup reads the same flag to add output transcription)
         // — changing the key in Settings mid-session never switches voices.
+        elErrorToastShown = false
         elSpeaker = if (Prefs.elevenLabsEnabled) {
             try {
-                ElevenLabsSpeaker(getApplication())
+                ElevenLabsSpeaker(getApplication()).also { sp ->
+                    sp.onError = { code -> notifyElError(code) }
+                }
             } catch (_: Exception) {
                 null
             }
@@ -366,6 +384,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             override fun onStatus(msg: String) {
                 if (gen != sessionGen) return
                 _statusText.postValue(msg)
+            }
+
+            override fun onNotice(msg: String) {
+                if (gen != sessionGen) return
+                postToast(msg)
             }
 
             override fun onSetupComplete() {

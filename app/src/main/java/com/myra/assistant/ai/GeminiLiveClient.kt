@@ -31,10 +31,20 @@ class GeminiLiveClient(private val listener: Listener) {
         fun onError(msg: String)
         fun onClosed(reason: String)
         fun onGoAway()
+
+        /** One-shot diagnostic notice for the user (shown as a toast by
+         *  the UI layer). Default: ignored. */
+        fun onNotice(msg: String) {}
     }
 
     companion object {
         const val MODEL = "models/gemini-3.1-flash-live-preview"
+
+        /** ElevenLabs-mode Live model: Google documents text/transcription
+         *  output alongside its audio for gemini-3.8-live (the 3.1 preview
+         *  above is also being shut down on Nov 17, 2026). Used only when
+         *  ElevenLabs voices her replies (see sendSetup). */
+        const val EL_MODEL = "models/gemini-3.8-live"
 
         const val BASE_URL =
             "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key="
@@ -90,6 +100,18 @@ class GeminiLiveClient(private val listener: Listener) {
      * chat. False for a plain AUDIO session.
      */
     private var elTranscriptionMode: Boolean = false
+
+    // --- per-turn text tracking (ElevenLabs mode) ---
+    // turnSawTranscription: this turn already produced an outputTranscription
+    // delta — modelTurn text parts are forwarded only until then (the text
+    // part is a fallback source of her words for turns/models where the
+    // transcription never comes). turnAudioChunks / turnTextDeltas feed the
+    // silent-reply tripwire checked at turnComplete.
+    private var turnSawTranscription = false
+    private var turnAudioChunks = 0
+    private var turnTextDeltas = 0
+    // Tripwire notice fires at most once per session (reset in sendSetup).
+    private var elNoTextNoticeShown = false
 
     fun connect(apiKey: String) {
         try {
@@ -599,9 +621,13 @@ class GeminiLiveClient(private val listener: Listener) {
             // model on the Gemini API anymore (the half-cascade line was
             // shut down — every current Live model is native-audio and
             // REJECTS responseModalities ["TEXT"] at setup with close
-            // 1007), so the session stays on the native-audio MODEL with
-            // AUDIO modality and the usual speechConfig, exactly like a
-            // plain session. The only addition in EL mode is
+            // 1007), so the session stays in AUDIO modality. EL mode uses
+            // EL_MODEL (gemini-3.8-live — Google documents text/transcription
+            // output alongside its audio, and the 3.1 preview MODEL is being
+            // shut down on Nov 17, 2026 anyway) and does NOT pin a voice in
+            // speechConfig: her Gemini audio is discarded unheard, and a
+            // voice name that 3.8-live doesn't know must never be able to
+            // reject the whole setup. The other addition in EL mode is
             // outputAudioTranscription (added below): the server then
             // streams the reply's text alongside its audio, MainViewModel
             // discards that audio unheard, and the transcript is what
@@ -610,9 +636,20 @@ class GeminiLiveClient(private val listener: Listener) {
             // session (no transcription is requested).
             val elMode = com.myra.assistant.util.Prefs.elevenLabsEnabled
             elTranscriptionMode = elMode
+            // Fresh session: per-turn text tracking and the once-per-session
+            // silent-reply tripwire start clean.
+            turnSawTranscription = false
+            turnAudioChunks = 0
+            turnTextDeltas = 0
+            elNoTextNoticeShown = false
             val genConfig = JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
-                .put(
+            // Plain AUDIO mode pins her prebuilt voice exactly as before.
+            // EL mode sends NO speechConfig at all (see the branch comment
+            // above): the server default applies to audio nobody hears, and
+            // nothing voice-related can reject the EL setup.
+            if (!elMode) {
+                genConfig.put(
                     "speechConfig",
                     JSONObject().put(
                         "voiceConfig",
@@ -622,8 +659,9 @@ class GeminiLiveClient(private val listener: Listener) {
                         )
                     )
                 )
+            }
             val setup = JSONObject()
-                .put("model", MODEL)
+                .put("model", if (elMode) EL_MODEL else MODEL)
                 .put(
                     "sessionResumption",
                     // Resume previous conversation context when we have a fresh
@@ -1018,15 +1056,23 @@ class GeminiLiveClient(private val listener: Listener) {
                 for (i in 0 until parts.length()) {
                     val part = parts.getJSONObject(i)
                     if (part.has("inlineData")) {
+                        turnAudioChunks++
                         val data = part.getJSONObject("inlineData").getString("data")
                         listener.onAudioChunk(Base64.decode(data, Base64.DEFAULT))
                     }
                     if (part.has("text")) {
-                        // ElevenLabs transcription mode: the reply text
-                        // comes from outputTranscription below (native-audio
-                        // turns carry no text parts anyway) — forwarding a
-                        // text part too would double the chat and the speech.
                         if (!elTranscriptionMode) {
+                            listener.onTextDelta(part.getString("text"))
+                        } else if (!turnSawTranscription) {
+                            // ElevenLabs mode fallback text path: if this
+                            // turn never produces outputTranscription (the
+                            // v14 total-silence failure), a modelTurn text
+                            // part is the ONLY source of her words — forward
+                            // it. Once the turn's first transcription delta
+                            // has arrived, text parts are ignored again:
+                            // forwarding both would double the chat and the
+                            // ElevenLabs speech.
+                            turnTextDeltas++
                             listener.onTextDelta(part.getString("text"))
                         }
                     }
@@ -1040,7 +1086,13 @@ class GeminiLiveClient(private val listener: Listener) {
             // discarded unheard by MainViewModel.
             if (sc.has("outputTranscription")) {
                 val t = sc.getJSONObject("outputTranscription").optString("text")
-                if (t.isNotEmpty()) listener.onTextDelta(t)
+                if (t.isNotEmpty()) {
+                    if (elTranscriptionMode) {
+                        turnSawTranscription = true
+                        turnTextDeltas++
+                    }
+                    listener.onTextDelta(t)
+                }
             }
 
             if (sc.has("inputTranscription")) {
@@ -1049,6 +1101,20 @@ class GeminiLiveClient(private val listener: Listener) {
             }
 
             if (sc.optBoolean("turnComplete")) {
+                // Silent-reply tripwire (ElevenLabs mode): the turn carried
+                // audio but NO text of either kind (no transcription delta,
+                // no text part) — her reply can neither be shown in chat nor
+                // spoken by ElevenLabs, and without this notice that failure
+                // is completely invisible. Once per session is enough.
+                if (elTranscriptionMode && turnAudioChunks > 0 && turnTextDeltas == 0 &&
+                    !elNoTextNoticeShown
+                ) {
+                    elNoTextNoticeShown = true
+                    listener.onNotice("Jawab aaya lekin uske alfaaz (transcription) nahi mile")
+                }
+                turnSawTranscription = false
+                turnAudioChunks = 0
+                turnTextDeltas = 0
                 listener.onTurnComplete()
             }
             if (sc.optBoolean("interrupted")) {

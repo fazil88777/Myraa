@@ -74,6 +74,25 @@ class ElevenLabsSpeaker(context: Context) {
     @Volatile private var currentPlayer: MediaPlayer? = null
     @Volatile private var playLatch: CountDownLatch? = null
 
+    /**
+     * Synthesis failure reporter, wired by MainViewModel: invoked from the
+     * pipeline thread on EVERY failed synthesis with the HTTP status code
+     * (401 bad key/scope, 404 unknown Voice ID, 429 quota, ...) or -1 for a
+     * network/other failure. The ViewModel turns the FIRST failure of a
+     * session into a user-visible toast — a failed request must never again
+     * be only a silently dropped segment. NOT invoked when the request was
+     * merely cancelled by stopAll() (barge-in / session stop is no failure).
+     */
+    @Volatile
+    var onError: ((Int) -> Unit)? = null
+
+    private fun notifyError(code: Int) {
+        try {
+            onError?.invoke(code)
+        } catch (_: Exception) {
+        }
+    }
+
     /** Streamed reply text not yet cut into a full sentence. */
     private val buffer = StringBuilder()
 
@@ -202,7 +221,11 @@ class ElevenLabsSpeaker(context: Context) {
     private fun synthesize(text: String): ByteArray? {
         val key = Prefs.elevenLabsKey
         val voiceId = Prefs.elevenLabsVoiceId
-        if (key.isBlank() || voiceId.isBlank()) return null
+        if (key.isBlank() || voiceId.isBlank()) {
+            notifyError(-1)
+            return null
+        }
+        var call: Call? = null
         return try {
             val body = JSONObject()
                 .put("text", text)
@@ -221,12 +244,14 @@ class ElevenLabsSpeaker(context: Context) {
                 .addHeader("Content-Type", "application/json")
                 .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
-            val call = http.newCall(request)
-            currentCall = call
-            call.execute().use { resp ->
+            val c = http.newCall(request)
+            call = c
+            currentCall = c
+            c.execute().use { resp ->
                 if (!resp.isSuccessful) {
                     // Log the code only — never the key, never the body.
                     Log.d(TAG, "TTS request failed: HTTP ${resp.code}")
+                    notifyError(resp.code)
                     null
                 } else {
                     resp.body?.bytes()
@@ -234,6 +259,9 @@ class ElevenLabsSpeaker(context: Context) {
             }
         } catch (e: Exception) {
             Log.d(TAG, "TTS request error: ${e.javaClass.simpleName}: ${e.message}")
+            // A call cancelled by stopAll() (barge-in / session stop) is
+            // NOT a failure — never surface it as one.
+            if (call?.isCanceled() != true) notifyError(-1)
             null
         } finally {
             currentCall = null
