@@ -334,7 +334,11 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    /** LIVE API TEST: one minimal Gemini REST call with the saved key. */
+    /** LIVE API TEST: one minimal Gemini REST call with the saved key.
+     *  Uses stable REST text models — NEVER the Live session model. A 404 here means
+     *  the model is retired / not available for this key (gemini-2.0-flash was shut
+     *  down by Google on 2026-06-01 and returns 404 for everyone), so fall back
+     *  through the successor model and finally the models list before failing. */
     private fun runApiTest() {
         val key = Prefs.apiKey
         if (key.isBlank()) {
@@ -344,43 +348,78 @@ class SettingsFragment : Fragment() {
         toast("API test ho raha hai…")
         Thread {
             var ok = false
-            var code = -1
+            var failText: String? = null
             try {
                 val client = OkHttpClient.Builder()
                     .connectTimeout(15, TimeUnit.SECONDS)
                     .readTimeout(20, TimeUnit.SECONDS)
                     .build()
-                val payload = JSONObject().apply {
-                    put(
-                        "contents",
-                        JSONArray().put(
-                            JSONObject().put(
-                                "parts",
-                                JSONArray().put(JSONObject().put("text", "Hi"))
+                var lastCode = -1
+                var lastMsg = ""
+                var modelBlocked = false
+                for (model in listOf("gemini-2.5-flash", "gemini-3.8-flash")) {
+                    val payload = JSONObject().apply {
+                        put(
+                            "contents",
+                            JSONArray().put(
+                                JSONObject().put(
+                                    "parts",
+                                    JSONArray().put(JSONObject().put("text", "Say OK"))
+                                )
                             )
                         )
-                    )
-                }.toString()
-                val request = Request.Builder()
-                    .url(
-                        "https://generativelanguage.googleapis.com/v1beta/models/" +
-                            "gemini-2.0-flash:generateContent"
-                    )
-                    .addHeader("X-goog-api-key", key)
-                    .post(payload.toRequestBody("application/json".toMediaType()))
-                    .build()
-                client.newCall(request).execute().use { resp ->
-                    code = resp.code
-                    ok = resp.isSuccessful
+                    }.toString()
+                    val request = Request.Builder()
+                        .url(
+                            "https://generativelanguage.googleapis.com/v1beta/models/" +
+                                "$model:generateContent"
+                        )
+                        .addHeader("X-goog-api-key", key)
+                        .post(payload.toRequestBody("application/json".toMediaType()))
+                        .build()
+                    client.newCall(request).execute().use { resp ->
+                        lastCode = resp.code
+                        if (resp.isSuccessful) {
+                            ok = true
+                            modelBlocked = false
+                        } else {
+                            val bodyStr = resp.body?.string().orEmpty()
+                            lastMsg = try {
+                                JSONObject(bodyStr).optJSONObject("error")
+                                    ?.optString("message").orEmpty()
+                            } catch (_: Exception) {
+                                ""
+                            }
+                            modelBlocked = resp.code == 404
+                        }
+                    }
+                    if (ok || !modelBlocked) break
                 }
-            } catch (_: Exception) {
+                if (!ok && modelBlocked) {
+                    // Every flash model 404'd for this key: if the models list
+                    // loads, the key itself is valid — only model access is blocked.
+                    val listReq = Request.Builder()
+                        .url("https://generativelanguage.googleapis.com/v1beta/models")
+                        .addHeader("X-goog-api-key", key)
+                        .get()
+                        .build()
+                    client.newCall(listReq).execute().use { resp ->
+                        if (resp.isSuccessful) ok = true
+                    }
+                }
+                if (!ok) {
+                    failText = if (lastMsg.isNotBlank())
+                        "API test fail ($lastCode): ${lastMsg.take(120)}"
+                    else
+                        "API test fail (code $lastCode) — key ya net check karo"
+                }
+            } catch (e: Exception) {
+                failText = "API test fail — net check karo (${e.message?.take(60) ?: "error"})"
             }
+            val fail = failText
             activity?.runOnUiThread {
                 if (view == null) return@runOnUiThread
-                toast(
-                    if (ok) "API key kaam kar rahi hai ✓"
-                    else "API test fail (code $code) — key ya net check karo"
-                )
+                toast(if (ok) "API key kaam kar rahi hai ✓" else fail ?: "API test fail")
             }
         }.start()
     }
