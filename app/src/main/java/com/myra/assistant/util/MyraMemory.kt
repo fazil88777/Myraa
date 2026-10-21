@@ -337,13 +337,15 @@ object MyraMemory {
         return true
     }
 
-    fun recentProjects(limit: Int = 5): List<Entry> =
+    /** Recent PROJECT entries as ready-formatted lines (date, status, text). */
+    fun recentProjects(limit: Int = 5): List<String> =
         if (!::appContext.isInitialized) emptyList()
-        else readEntries().filter { it.category == "PROJECT" }.take(limit)
+        else readEntries().filter { it.category == "PROJECT" }.take(limit).map { formatLine(it) }
 
-    fun recentFamily(limit: Int = 5): List<Entry> =
+    /** Recent FAMILY entries as ready-formatted lines (date, text). */
+    fun recentFamily(limit: Int = 5): List<String> =
         if (!::appContext.isInitialized) emptyList()
-        else readEntries().filter { it.category == "FAMILY" }.take(limit)
+        else readEntries().filter { it.category == "FAMILY" }.take(limit).map { formatLine(it) }
 
     // ---------- Unified long-term memory search (search_memory tool) ----------
 
@@ -463,13 +465,13 @@ object MyraMemory {
         if (projects.isNotEmpty()) {
             sb.append("CHAL RAHE PROJECTS (har project ki tareekh aur status \u2014 ")
             sb.append("wo poochhe to search_memory karke taaza jawab dena):\n")
-            projects.forEach { sb.append("\u2022 ").append(formatLine(it)).append("\n") }
+            projects.forEach { sb.append("\u2022 ").append(it).append("\n") }
         }
         val family = recentFamily()
         if (family.isNotEmpty()) {
             sb.append("GHAR WALON KE BAARE MEIN YAAD RAKHA HAI (family \u2014 in par ")
             sb.append("khud follow-up karna, jaise 'Ammi ki tabiyat ab kaisi hai?'):\n")
-            family.forEach { sb.append("\u2022 ").append(formatLine(it)).append("\n") }
+            family.forEach { sb.append("\u2022 ").append(it).append("\n") }
         }
         val recap = lastRecap()
         if (recap.isNotBlank()) {
