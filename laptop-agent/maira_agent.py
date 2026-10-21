@@ -14,10 +14,22 @@ Settings > KEYS & DATA > Laptop Pairing Code mein dala hai. Code
 maira_config.json mein save ho jata hai. Is code ko password ki tarah
 rakho: jiske paas code hai, woh is broker par tumhare laptop ko command
 bhej sakta hai.
+
+Broker topic asal code se NAHI banta: topic mein code ke SHA-256 hash
+ke pehle 16 hex harf jate hain — myra/<hash>/cmd (subscribe) aur
+myra/<hash>/result (publish). Wajah: code mein '#' ya '+' jaisa koi
+harf ho sakta hai jo MQTT topic filter mein wildcard hai; asal code
+topic mein dalne se broker "Invalid subscription filter" keh kar
+subscribe reject kar deta hai. Hash hamesha [0-9a-f] hota hai, to
+topic hamesha durust banta hai. Asal code sirf message ke payload ke
+'code' field mein jata hai, jise agent har command par bilkul waisa
+ka waisa milata hai. Phone ki taraf bhi bilkul yahi hash banta hai
+(util/LaptopLink.kt).
 """
 
 import base64
 import glob
+import hashlib
 import json
 import os
 import shutil
@@ -61,6 +73,16 @@ NAMED_DIRS = {
 PAIRING_CODE = ""
 CMD_TOPIC = ""
 RESULT_TOPIC = ""
+
+
+def topic_segment(code):
+    """Broker topic ke liye segment: code ke SHA-256 hash ke pehle
+    16 hex harf. Asal code kabhi topic mein nahi jata — code mein
+    '#' ya '+' (MQTT wildcards) jaisa harf ho to raw code se bana
+    topic filter invalid hota hai aur broker har subscribe par
+    'Invalid subscription filter' de deta hai. Yehi derivation
+    phone par LaptopLink.kt mein hai."""
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()[:16]
 
 
 def log(msg):
@@ -522,8 +544,9 @@ def on_message(client, userdata, message):
 def main():
     global PAIRING_CODE, CMD_TOPIC, RESULT_TOPIC
     PAIRING_CODE = load_or_ask_code()
-    CMD_TOPIC = "myra/%s/cmd" % PAIRING_CODE
-    RESULT_TOPIC = "myra/%s/result" % PAIRING_CODE
+    seg = topic_segment(PAIRING_CODE)
+    CMD_TOPIC = "myra/%s/cmd" % seg
+    RESULT_TOPIC = "myra/%s/result" % seg
 
     client = mqtt.Client(client_id="myra-laptop-%d" % int(time.time()),
                          clean_session=True)
@@ -534,6 +557,7 @@ def main():
 
     print("=" * 60)
     print("MYRA Laptop Agent chal para hai.")
+    print("Topic: myra/%s/cmd" % seg)
     print("Band karne ke liye ye window band kar do (ya Ctrl+C).")
     print("=" * 60)
     while True:

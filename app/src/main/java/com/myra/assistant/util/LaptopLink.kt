@@ -8,6 +8,7 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions
 import org.eclipse.paho.client.mqttv3.MqttMessage
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import org.json.JSONObject
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
@@ -19,8 +20,13 @@ import java.util.concurrent.TimeUnit
  * public EMQX MQTT broker (tcp://broker.emqx.io:1883).
  *
  * Topics are derived from the pairing code (Prefs.laptopPairingCode):
- * commands go to `myra/<code>/cmd`, the laptop answers on
- * `myra/<code>/result`. The code is the shared secret — the laptop agent
+ * commands go to `myra/<seg>/cmd`, the laptop answers on
+ * `myra/<seg>/result`, where <seg> is the first 16 lowercase hex chars
+ * of the code's SHA-256 — the raw code itself must never appear in a
+ * topic, because a code containing '#' or '+' (MQTT wildcard chars)
+ * would make an invalid topic filter and the broker would reject the
+ * subscription ("Invalid subscription filter"). The laptop agent
+ * derives the identical segment (topic_segment() in maira_agent.py). The code is the shared secret — the laptop agent
  * also double-checks it inside every payload — so it must be a long
  * random string and treated like a password.
  *
@@ -65,8 +71,23 @@ object LaptopLink {
 
     private val pending = ConcurrentHashMap<String, Pending>()
 
-    private fun cmdTopic(code: String) = "myra/$code/cmd"
-    private fun resultTopic(code: String) = "myra/$code/result"
+    /**
+     * Topic segment for [code]: first 16 lowercase hex chars of its
+     * SHA-256 (UTF-8). Identical derivation to topic_segment() in
+     * laptop-agent/maira_agent.py — both sides must agree, and the hash
+     * (only [0-9a-f]) is always a valid MQTT topic segment no matter
+     * what characters the raw pairing code contains. The raw code
+     * still travels inside every payload's "code" field, where the
+     * agent verifies it.
+     */
+    private fun topicSegment(code: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(code.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }.substring(0, 16)
+    }
+
+    private fun cmdTopic(code: String) = "myra/${topicSegment(code)}/cmd"
+    private fun resultTopic(code: String) = "myra/${topicSegment(code)}/result"
 
     /**
      * Make sure the MQTT connection is up. Called when a voice session
