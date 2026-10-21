@@ -48,13 +48,17 @@ object Prefs {
         get() = str("api_key", "")
         set(value) = putStr("api_key", value)
 
-    /** Voice engine: "GEMINI_TTS" (Gemini TTS model speaks the Live
-     *  session's transcript with the app's own Gemini key — the default),
-     *  "EDGE" (Microsoft Edge Neural TTS — free, no key, with Google
-     *  Translate TTS as its silent per-segment fallback) or "GEMINI"
-     *  (Gemini Live's own native voice). Settings > KEYS & DATA. */
+    /** Voice engine: "GEMINI" (Gemini Live's own native voice — the
+     *  default since the Live-default migration below: the Live
+     *  WebSocket has no per-message quota and works on the user's key),
+     *  "GEMINI_TTS" (Gemini TTS model speaks the Live session's
+     *  transcript with the app's own Gemini key — realistic but the
+     *  free tier's preview-model quota dies fast; on HTTP 429 the
+     *  session shifts to the free Google voice) or "EDGE" (Microsoft
+     *  Edge Neural TTS — free, no key, with Google Translate TTS as
+     *  its silent per-segment fallback). Settings > KEYS & DATA. */
     var voiceEngine: String
-        get() = str("voice_engine", "GEMINI_TTS")
+        get() = str("voice_engine", "GEMINI")
         set(value) = putStr("voice_engine", value)
 
     /** One-time Gemini-TTS migration ran (see migrateVoiceGeminiTts). */
@@ -74,6 +78,31 @@ object Prefs {
         if (!::sp.isInitialized || voiceGeminiTtsMigrated) return
         voiceEngine = "GEMINI_TTS"
         voiceGeminiTtsMigrated = true
+    }
+
+    /** One-time Live-default migration ran (see migrateLiveDefault). */
+    var liveDefaultMigrated: Boolean
+        get() = bool("voice_live_default_migrated", false)
+        set(value) = putBool("voice_live_default_migrated", value)
+
+    /**
+     * One-time migration for the Live-default build: on the FIRST start
+     * with this build, force the engine back to GEMINI (Live native
+     * audio) and the Live voice to "Aoede" exactly once. Proven
+     * on-device: the Gemini TTS preview REST model hits HTTP 429 after
+     * a few sentences on the free tier (per-sentence calls exhaust its
+     * tiny RPM/RPD), while the Live WebSocket path makes no per-message
+     * calls and simply works on the user's key. Runs AFTER
+     * migrateVoiceGeminiTts at app start, so it wins on installs that
+     * already took that migration. A later manual engine/voice switch
+     * in Settings is respected (the flag stays set). Call once at app
+     * start, after init.
+     */
+    fun migrateLiveDefault() {
+        if (!::sp.isInitialized || liveDefaultMigrated) return
+        voiceEngine = "GEMINI"
+        voiceName = "Aoede"
+        liveDefaultMigrated = true
     }
 
     /** Edge Neural voice that speaks her replies in EDGE engine mode. */

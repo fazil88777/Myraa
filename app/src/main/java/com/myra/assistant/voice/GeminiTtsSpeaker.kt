@@ -50,6 +50,13 @@ import java.util.concurrent.TimeUnit
  *    when the first segment actually starts playing, and
  *    "Audio Error: <reason>" once per session on the first failure —
  *    so a silent voice is never again undiagnosable;
+ *  - QUOTA BYPASS: the free tier's quota on this preview REST model is
+ *    tiny (per-sentence calls hit HTTP 429 within a few replies). The
+ *    first 429 flips a session-level flag: that segment and ALL later
+ *    segments of the session are spoken by the free Google voice
+ *    (GoogleTtsClient, tl=hi) instead of the REST model, and the debug
+ *    surface announces the shift once. The flag lives on the speaker
+ *    instance, so the next session tries the Gemini TTS model again;
  *  - stopAll() (barge-in, session stop, shutdown) clears the queue and
  *    halts playback immediately via a generation counter — stale work
  *    from an older moment can never play.
@@ -111,6 +118,17 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
     @Volatile private var playingNotified = false
     @Volatile private var errorNotified = false
 
+    /** Free-voice bypass target once the Gemini TTS quota dies (429). */
+    private val googleTts = GoogleTtsClient(appCtx)
+
+    /**
+     * Session-level quota flag: set by the first HTTP 429 from the TTS
+     * model; from then on every segment of THIS session is spoken by
+     * the free Google voice instead of the REST model.
+     */
+    @Volatile private var quotaExhausted = false
+    @Volatile private var quotaNotified = false
+
     /** Streamed reply text not yet cut into a full sentence. */
     private val buffer = StringBuilder()
 
@@ -171,6 +189,12 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
         generation++
         queue.clear()
         synchronized(buffer) { buffer.setLength(0) }
+        // If a segment is currently spoken by the Google bypass voice,
+        // halt that playback too.
+        try {
+            googleTts.stop()
+        } catch (_: Exception) {
+        }
         // Pause + flush halts the sound immediately; the pipeline
         // thread's playPcm loop sees the generation bump and stops /
         // releases the track itself (releasing from here while a
@@ -212,9 +236,23 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
     private fun playSegment(seg: Segment) {
         var ok = false
         try {
-            val res = synthesize(seg.text)
-            if (res != null && seg.gen == generation && !released) {
-                ok = playPcm(res.pcm, res.sampleRate, seg.gen)
+            if (quotaExhausted) {
+                // The Gemini TTS quota already died this session: the
+                // free Google voice speaks everything from here on.
+                ok = speakViaGoogle(seg)
+            } else {
+                val res = synthesize(seg.text)
+                if (res != null && seg.gen == generation && !released) {
+                    ok = playPcm(res.pcm, res.sampleRate, seg.gen)
+                } else if (res == null && quotaExhausted &&
+                    seg.gen == generation && !released
+                ) {
+                    // That REST call was the one that hit HTTP 429 —
+                    // THIS segment still gets spoken, by the free
+                    // Google voice (synthesize() set the flag and
+                    // announced the shift).
+                    ok = speakViaGoogle(seg)
+                }
             }
         } catch (e: Exception) {
             Log.d(TAG, "segment dropped: ${e.javaClass.simpleName}: ${e.message}")
@@ -222,6 +260,18 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
         }
         if (ok) seg.onPlayed?.let { safeCallback(it) }
         else seg.onFailed?.let { safeCallback(it) }
+    }
+
+    /**
+     * Speak one segment with the free Google voice (the 429 bypass):
+     * tl=hi — Roman Urdu/Hindi reads naturally with the Hindi voice.
+     * Runs on this speaker's pipeline thread, in queue order.
+     */
+    private fun speakViaGoogle(seg: Segment): Boolean {
+        if (seg.gen != generation || released) return false
+        return googleTts.speakSegment(seg.text, "hi") {
+            seg.gen == generation && !released
+        }
     }
 
     // ------------------------------------------------------------------
@@ -251,6 +301,16 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
         errorNotified = true
         try {
             onDebugEvent?.invoke("Audio Error: $reason")
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Quota-shift announcement (HTTP 429 bypass), once per session. */
+    private fun notifyQuotaOnce() {
+        if (quotaNotified) return
+        quotaNotified = true
+        try {
+            onDebugEvent?.invoke("Quota khatam (429) — free awaaz par shift ho gayi hai")
         } catch (_: Exception) {
         }
     }
@@ -318,7 +378,16 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
             http.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     Log.d(TAG, "Gemini TTS failed: HTTP ${resp.code}")
-                    notifyErrorOnce("HTTP ${resp.code}")
+                    if (resp.code == 429) {
+                        // Free-tier quota on the preview TTS model is
+                        // exhausted: flip the session to the free Google
+                        // voice (the caller routes this very segment
+                        // there too) and announce the shift once.
+                        quotaExhausted = true
+                        notifyQuotaOnce()
+                    } else {
+                        notifyErrorOnce("HTTP ${resp.code}")
+                    }
                     return null
                 }
                 val json = JSONObject(resp.body?.string() ?: return null)

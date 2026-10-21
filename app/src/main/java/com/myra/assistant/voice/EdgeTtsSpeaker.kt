@@ -44,8 +44,9 @@ import java.util.concurrent.TimeUnit
  *
  * FAIL-SAFE CHAIN (per segment):
  *  1. Edge Neural TTS over the WebSocket below (~3s budget);
- *  2. Google Translate TTS over plain HTTPS (translate_tts, the same
- *     text, chunked to what the endpoint accepts).
+ *  2. Google Translate TTS over plain HTTPS via the shared
+ *     GoogleTtsClient (clients5.google.com endpoint, the same text,
+ *     chunked to what the endpoint accepts).
  * Both layers fail SILENTLY into the next (log only) — if both are
  * unreachable the segment is simply not spoken. There is NO robotic
  * device-TTS behind them and no user-visible "voice failed" message
@@ -99,11 +100,8 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
-    /** Short-timeout client for the Google Translate TTS fallback. */
-    private val googleHttp: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .readTimeout(3, TimeUnit.SECONDS)
-        .build()
+    /** Layer 2 of the fail-safe chain: shared free Google TTS client. */
+    private val googleTts = GoogleTtsClient(appCtx)
 
     private val queue = LinkedBlockingQueue<Segment>()
     private val executor = Executors.newSingleThreadExecutor { r ->
@@ -116,11 +114,6 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
     @Volatile private var currentSocket: WebSocket? = null
     @Volatile private var currentPlayer: MediaPlayer? = null
     @Volatile private var playLatch: CountDownLatch? = null
-
-    /** Google Translate TTS wants a plain desktop-browser User-Agent. */
-    private val googleUa =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
 
     /** Streamed reply text not yet cut into a full sentence. */
     private val buffer = StringBuilder()
@@ -182,6 +175,11 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
         generation++
         queue.clear()
         synchronized(buffer) { buffer.setLength(0) }
+        // Halt a Google-client playback too (layer 2 may be speaking).
+        try {
+            googleTts.stop()
+        } catch (_: Exception) {
+        }
         try {
             currentSocket?.cancel()
         } catch (_: Exception) {
@@ -234,18 +232,22 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
         try {
             // Layer 1: Edge Neural TTS (fresh WebSocket, ~3s budget).
             val edgeBytes = synthesize(seg.text)
-            // Layer 2: Google Translate TTS (plain HTTPS, ~3s budget),
-            // tried only when Edge produced nothing. Nothing behind it:
-            // both layers down = this segment stays silent.
-            val chunks: List<ByteArray>? =
-                if (edgeBytes != null) listOf(edgeBytes)
-                else synthesizeGoogle(seg.text, seg.gen)
-            if (chunks != null && seg.gen == generation && !released) {
-                when (playChunks(chunks, seg.gen)) {
-                    // Fully/partly spoken, or interrupted before any audio
-                    // (barge-in): either way the segment is DONE.
-                    1, 0 -> handled = true
-                    // -1: failed before a single byte played — silent.
+            if (edgeBytes != null) {
+                if (seg.gen == generation && !released) {
+                    when (playChunks(listOf(edgeBytes), seg.gen)) {
+                        // Fully/partly spoken, or interrupted before any
+                        // audio (barge-in): the segment is DONE either way.
+                        1, 0 -> handled = true
+                        // -1: failed before a single byte played — silent.
+                    }
+                }
+            } else if (seg.gen == generation && !released) {
+                // Layer 2: Google Translate TTS via the shared clients5
+                // client, chunks played in order on this pipeline
+                // thread. Nothing behind it: both layers down = this
+                // segment stays silent.
+                handled = googleTts.speakSegment(seg.text, googleLang()) {
+                    seg.gen == generation && !released
                 }
             }
         } catch (e: Exception) {
@@ -285,64 +287,14 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
     }
 
     // ------------------------------------------------------------------
-    // Layer 2: Google Translate TTS (free HTTPS MP3 stream)
+    // Layer 2: Google Translate TTS — the shared GoogleTtsClient
+    // (clients5.google.com endpoint) does the fetch + playback; this
+    // speaker only picks the language matching the selected Edge voice.
     // ------------------------------------------------------------------
 
     /** Google `tl` code matching the selected Edge voice's language. */
     private fun googleLang(): String =
         if (Prefs.edgeVoice.startsWith("hi")) "hi" else "ur"
-
-    /** Split into <=150-char chunks at word boundaries (endpoint limit). */
-    private fun splitForGoogle(text: String): List<String> {
-        if (text.length <= 150) return listOf(text)
-        val out = mutableListOf<String>()
-        var rest = text
-        while (rest.length > 150) {
-            var cut = rest.lastIndexOf(' ', 150)
-            if (cut < 60) cut = 150
-            out.add(rest.substring(0, cut).trim())
-            rest = rest.substring(cut).trim()
-        }
-        if (rest.isNotEmpty()) out.add(rest)
-        return out.filter { it.isNotEmpty() }
-    }
-
-    /**
-     * Fetch this segment's MP3(s) from Google Translate TTS, in order.
-     * Null on ANY failure (HTTP error, network, stale generation) —
-     * silently: the segment then stays unspoken.
-     */
-    private fun synthesizeGoogle(text: String, gen: Int): List<ByteArray>? {
-        return try {
-            val lang = googleLang()
-            val parts = splitForGoogle(text)
-            val out = ArrayList<ByteArray>(parts.size)
-            for (part in parts) {
-                if (gen != generation || released) return null
-                val url = "https://translate.google.com/translate_tts?ie=UTF-8" +
-                    "&q=" + java.net.URLEncoder.encode(part, "UTF-8") +
-                    "&tl=" + lang + "&client=tw-ob"
-                val request = Request.Builder()
-                    .url(url)
-                    .addHeader("User-Agent", googleUa)
-                    .build()
-                val fetched = googleHttp.newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) {
-                        Log.d(TAG, "Google TTS failed: HTTP ${resp.code}")
-                        null
-                    } else {
-                        resp.body?.bytes()?.takeIf { it.isNotEmpty() }
-                    }
-                }
-                if (fetched == null) return null
-                out.add(fetched)
-            }
-            if (out.isEmpty()) null else out
-        } catch (e: Exception) {
-            Log.d(TAG, "Google TTS error: ${e.javaClass.simpleName}: ${e.message}")
-            null
-        }
-    }
 
     // ------------------------------------------------------------------
     // Edge read-aloud WebSocket protocol (public "edge-tts" protocol)
