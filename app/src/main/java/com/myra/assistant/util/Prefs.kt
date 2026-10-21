@@ -109,6 +109,21 @@ object Prefs {
         get() = bool("memory_enabled", true)
         set(value) = putBool("memory_enabled", value)
 
+    /** Neon border around the app screens (and the floating border). */
+    var neonLighting: Boolean
+        get() = bool("neon_lighting", true)
+        set(value) = putBool("neon_lighting", value)
+
+    /** Live Voice: real-time voice chat allowed from the orb/reactor. */
+    var liveVoice: Boolean
+        get() = bool("live_voice", true)
+        set(value) = putBool("live_voice", value)
+
+    /** Floating border over other apps while a session is live. */
+    var floatingBorder: Boolean
+        get() = bool("floating_border", true)
+        set(value) = putBool("floating_border", value)
+
     /** PC link server enabled. */
     var pcEnabled: Boolean
         get() = bool("pc_enabled", false)

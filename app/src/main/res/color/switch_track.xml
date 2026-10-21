@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Teal switch track (video re-skin): deep teal when on, blue-grey when off. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#14665A" android:state_checked="true" />
+    <item android:color="#3D4A56" />
+</selector>

@@ -28,16 +28,15 @@ import java.util.Locale
  *   Tools/Features, where her abilities live) with straight light beams
  *   in each pill's color running to the glowing reactor orb on the right.
  *   The reactor IS the voice button — tap starts the session
- *   ("listening"), tap again stops ("ready"). Status text under the
- *   reactor mirrors the real session.
+ *   (status "live"), tap again stops ("ready"). Status text under the
+ *   reactor mirrors the real session: ready → connecting live… → live.
  * • Under the status: a wide SCREEN SHARE bar wired to MYRA's real
  *   screen-share (same toggle as the voice control).
  * • Cards: INTELLIGENCE BRIEF (today + pending tasks from MyraMemory,
  *   "+ MORE" opens the Memory screen) and SYSTEM (real voice/memory state).
  * • Own dot-style bottom nav (Home / Chat / Voice / Memory / History /
- *   Settings — History opens Tools/Features) + an animated rainbow neon
- *   border. MainActivity hides its own header and bottom nav on this
- *   screen, so there is exactly one nav.
+ *   Settings — History opens Tools/Features). The neon border is drawn
+ *   once at the activity level, framing every screen.
  */
 class HomeFragment : Fragment() {
 
@@ -50,6 +49,7 @@ class HomeFragment : Fragment() {
     private var briefDate: TextView? = null
     private var briefTasks: TextView? = null
     private var lastErrorShown: String? = null
+    private var wasConnected = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -112,7 +112,14 @@ class HomeFragment : Fragment() {
         // the same toggle the voice control drives.
         screenShareBtn?.setOnClickListener { act?.toggleScreenShare() }
 
-        vm.isConnected.observe(viewLifecycleOwner) { updateStatus() }
+        vm.isConnected.observe(viewLifecycleOwner) { connected ->
+            // Announce a fresh successful connect, like the reference app.
+            if (connected == true && !wasConnected) {
+                Toast.makeText(requireContext(), "Conversation ON", Toast.LENGTH_SHORT).show()
+            }
+            wasConnected = connected == true
+            updateStatus()
+        }
         vm.isSharing.observe(viewLifecycleOwner) { updateShareLabel() }
         vm.statusText.observe(viewLifecycleOwner) { s ->
             updateStatus()
@@ -145,8 +152,8 @@ class HomeFragment : Fragment() {
         reactor?.active = connected
         val raw = vm.statusText.value ?: ""
         statusText?.text = when {
-            connected -> "listening"
-            raw.startsWith("Connecting") -> "connecting…"
+            connected -> "live"
+            raw.startsWith("Connecting") || raw.startsWith("Reconnecting") -> "connecting live…"
             else -> "ready"
         }
         if (view != null) refreshSystem()
@@ -181,7 +188,7 @@ class HomeFragment : Fragment() {
             ctx, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
         sysVoiceState?.text = when {
-            connected -> "● Listening…"
+            connected -> "● Voice active"
             Prefs.apiKey.isBlank() -> "● Voice: API key needed"
             !micOk -> "● Voice: mic permission off"
             else -> "● Voice ready"

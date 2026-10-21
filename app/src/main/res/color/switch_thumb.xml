@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Teal switch thumb (video re-skin): pale mint when on, light grey when off. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#8FF5DC" android:state_checked="true" />
+    <item android:color="#DDE3E8" />
+</selector>

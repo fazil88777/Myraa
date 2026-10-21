@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- MYRA home — sci-fi dashboard: spark-orbit header, pills + reactor orb
-     with light beams, Intelligence Brief + System cards, dot bottom nav,
-     rainbow neon border. Full screen, dark bg #060A12. MainActivity hides
-     its own header + bottom nav on this screen (it has its own nav). -->
+     with light beams, Intelligence Brief + System cards, dot bottom nav.
+     Full screen, dark bg #060A12. The rainbow neon border lives at the
+     activity level now (exactly one border, framing every screen). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -509,12 +509,4 @@
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
-
-    <!-- Rainbow neon border (topmost, never blocks touches) -->
-    <com.myra.assistant.ui.NeonBorderView
-        android:id="@+id/neonBorder"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:clickable="false"
-        android:focusable="false" />
 </FrameLayout>

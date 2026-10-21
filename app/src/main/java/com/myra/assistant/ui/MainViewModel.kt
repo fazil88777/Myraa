@@ -15,6 +15,7 @@ import com.myra.assistant.ai.GeminiLiveClient
 import com.myra.assistant.ai.ToolHandler
 import com.myra.assistant.ai.VoiceCodeLock
 import com.myra.assistant.data.ChatMessage
+import com.myra.assistant.service.BorderOverlay
 import com.myra.assistant.service.FloatingOrbService
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.Prefs
@@ -290,7 +291,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onSetupComplete() {
                 if (gen != sessionGen) return
-                _isConnected.postValue(true)
+                postConnected(true)
                 reconnectScheduled = false
                 lastModelActivityAt = System.currentTimeMillis()
                 lastModelResponseAt = System.currentTimeMillis()
@@ -415,14 +416,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // The socket reported an error: mark the session dead so
                 // scheduleReconnect() actually reconnects instead of no-op'ing
                 // on the stale "connected" flag.
-                _isConnected.postValue(false)
+                postConnected(false)
                 _statusText.postValue(msg)
                 scheduleReconnect()
             }
 
             override fun onClosed(reason: String) {
                 if (gen != sessionGen) return
-                _isConnected.postValue(false)
+                postConnected(false)
                 _statusText.postValue(reason)
                 scheduleReconnect()
             }
@@ -452,6 +453,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         CameraVision.sessionLive = true
         CameraVision.onFrame = { b64 -> sendVideoFrame(b64) }
         CameraVision.refresh(getApplication())
+    }
+
+    /**
+     * Post the connection state and keep the floating neon border in
+     * sync — this runs on socket callbacks too, so the overlay starts/
+     * stops even while the app is backgrounded and MainActivity's own
+     * observers are paused.
+     */
+    private fun postConnected(value: Boolean) {
+        _isConnected.postValue(value)
+        try {
+            BorderOverlay.refresh(getApplication(), value)
+        } catch (_: Exception) {
+        }
     }
 
     fun sendTypedText(text: String) {
@@ -645,7 +660,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Exception) {
         }
         client = null
-        _isConnected.postValue(false)
+        postConnected(false)
     }
 
     override fun onCleared() {

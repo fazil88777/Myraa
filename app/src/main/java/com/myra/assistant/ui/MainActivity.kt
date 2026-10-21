@@ -7,7 +7,6 @@ import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.view.View
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -16,21 +15,27 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.myra.assistant.R
+import com.myra.assistant.service.BorderOverlay
 import com.myra.assistant.service.ScreenShareService
-import com.myra.assistant.util.LiaStyle
 import com.myra.assistant.util.MyraBridge
 import com.myra.assistant.util.PermissionHelper
 import com.myra.assistant.util.Prefs
-import java.util.Calendar
 
 /**
- * LIA-style host: grid background, header (sync | title | mic),
- * tab container, bottom navigation (Home / Chat / AI / Tools / Profile).
- * All voice/session logic lives in the shared MainViewModel.
+ * Host activity: a full-screen tab container framed by ONE activity-level
+ * NeonBorderView (the border now frames every screen, like the reference
+ * design). The old LIA header bar (sync | title | mic) and the old
+ * Home/Chat/AI/Tools/Profile bottom nav are GONE — the dashboard home is
+ * the hub: its own dot-nav + pills switch tabs, and system Back from any
+ * other tab returns HOME instead of exiting. All voice/session logic
+ * lives in the shared MainViewModel.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var viewModel: MainViewModel
+    private var neonBorder: NeonBorderView? = null
+    private var currentTab: String = "home"
+    private var wasConnected = false
 
     companion object {
         private const val REQ_CORE = 1001
@@ -74,33 +79,23 @@ class MainActivity : AppCompatActivity() {
         // Manual app open clears the full voice-shutdown flag.
         clearFullyOffIfManualOpen(intent)
 
-        // Theme: grid tint
-        findViewById<GridBackgroundView>(R.id.gridBg).gridColor =
-            LiaStyle.theme(Prefs.theme).gridColor
+        neonBorder = findViewById(R.id.neonBorderMain)
 
-        findViewById<TextView>(R.id.appNameText).text = Prefs.assistantName.ifBlank { "MYRA" }
-        findViewById<TextView>(R.id.appSubtitleText).text = greeting()
-
-        findViewById<View>(R.id.syncButton).setOnClickListener {
-            findViewById<TextView>(R.id.appSubtitleText).text = greeting()
-            toast("Synced ✓")
-        }
-        findViewById<View>(R.id.micButton).setOnClickListener {
-            if (viewModel.isConnected.value == true) {
-                viewModel.stopSession()
-            } else {
-                ensureSession()
+        // Border live/dim state + floating-overlay state follow the session.
+        viewModel.isConnected.observe(this) { connected ->
+            val live = connected == true
+            neonBorder?.live = live
+            BorderOverlay.refresh(this, live)
+            // Session just started: the floating border needs the
+            // draw-over-apps permission. Ask once per session start.
+            if (live && !wasConnected && Prefs.floatingBorder &&
+                !PermissionHelper.canDrawOverlays(this)
+            ) {
+                toast("Background border ke liye \"dusri apps ke upar dikhao\" permission chahiye")
+                PermissionHelper.openOverlaySettings(this)
             }
+            wasConnected = live
         }
-
-        findViewById<View>(R.id.navHome).setOnClickListener { selectTab("home") }
-        findViewById<View>(R.id.navChat).setOnClickListener { selectTab("chat") }
-        findViewById<View>(R.id.navVoice).setOnClickListener {
-            ensureSession()
-            selectTab("home")
-        }
-        findViewById<View>(R.id.navHistory).setOnClickListener { selectTab("tools") }
-        findViewById<View>(R.id.navSettings).setOnClickListener { selectTab("profile") }
 
         if (savedInstanceState == null) selectTab("home")
 
@@ -122,6 +117,8 @@ class MainActivity : AppCompatActivity() {
             if (on != null) setScreenShare(on)
         }
 
+        refreshBorderState()
+
         val lastCrash = Prefs.lastCrash
         if (lastCrash.isNotEmpty()) {
             Prefs.lastCrash = ""
@@ -133,10 +130,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        refreshBorderState()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         clearFullyOffIfManualOpen(intent)
+    }
+
+    /**
+     * Apply the Neon Lighting pref: hides/shows the border everywhere
+     * (activity frame + floating overlay). Called on create/resume and
+     * by Settings right after the toggles change.
+     */
+    fun refreshBorderState() {
+        neonBorder?.visibility = if (Prefs.neonLighting) View.VISIBLE else View.GONE
+        if (::viewModel.isInitialized) {
+            BorderOverlay.refresh(this, viewModel.isConnected.value == true)
+        }
+    }
+
+    /** System Back from any tab returns HOME; Back on home exits as usual. */
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (currentTab != "home") {
+            selectTab("home")
+        } else {
+            super.onBackPressed()
+        }
     }
 
     /** A manual app open clears the full-shutdown flag. */
@@ -159,6 +183,11 @@ class MainActivity : AppCompatActivity() {
             toast("MYRA off hai — app dobara kholo taake on ho")
             return
         }
+        // Live Voice off in Settings: the orb must not start a session.
+        if (!Prefs.liveVoice) {
+            toast("Live Voice off hai")
+            return
+        }
         val k = Prefs.apiKey
         if (k.isBlank()) {
             toast("Pehle Settings mein API key save karo")
@@ -168,19 +197,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun greeting(): String {
-        val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val g = when (h) {
-            in 5..11 -> "Good morning"
-            in 12..16 -> "Good afternoon"
-            in 17..21 -> "Good evening"
-            else -> "Good night"
-        }
-        val name = Prefs.userName.trim()
-        return if (name.isNotBlank()) "$g, $name" else "$g, dost"
-    }
-
     fun selectTab(tab: String) {
+        currentTab = tab
         val frag: Fragment = when (tab) {
             "chat" -> ChatFragment()
             "tools" -> FeaturesFragment()
@@ -191,32 +209,6 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .replace(R.id.fragmentContainer, frag)
             .commit()
-        // The dashboard home is a full-screen design with its own header
-        // and dot-nav, so the activity header + bottom nav hide on it.
-        // Every other tab keeps them.
-        val dashboardHome = tab == "home"
-        findViewById<View>(R.id.headerBar)?.visibility =
-            if (dashboardHome) View.GONE else View.VISIBLE
-        findViewById<View>(R.id.bottomNav)?.visibility =
-            if (dashboardHome) View.GONE else View.VISIBLE
-        paintNav(tab)
-    }
-
-    private fun paintNav(tab: String) {
-        val active = LiaStyle.theme(Prefs.theme).accent
-        val idle = 0xFF6A7B8A.toInt()
-        val ids = mapOf(
-            "home" to Pair(R.id.navHomeIcon, R.id.navHomeLabel),
-            "chat" to Pair(R.id.navChatIcon, R.id.navChatLabel),
-            "ai" to Pair(R.id.navVoiceIcon, R.id.navVoiceLabel),
-            "tools" to Pair(R.id.navHistoryIcon, R.id.navHistoryLabel),
-            "profile" to Pair(R.id.navSettingsIcon, R.id.navSettingsLabel)
-        )
-        ids.forEach { (key, pair) ->
-            val color = if (key == tab) active else idle
-            findViewById<TextView>(pair.first).setTextColor(color)
-            findViewById<TextView>(pair.second).setTextColor(color)
-        }
     }
 
     /** Start the voice session, or stop it if already live. Called by fragments. */

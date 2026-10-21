@@ -19,9 +19,10 @@ import kotlin.math.sin
  * to match the approved reference: a bright cyan segmented outer ring
  * (three thick glowing arc segments with gaps), a fine tick ring, thin
  * inner rings, and a bright white-cyan plasma core with sparkles inside.
- * While a voice session is live ([active]) it spins faster and brighter.
- * Tap handling lives in HomeFragment (MainActivity.toggleVoiceSession()).
- * Written fresh for MYRA.
+ * Session states (Fazil's spec): OFF = slow rotation, normal brightness;
+ * LIVE ([active]) = clearly faster rotation (~2.8x the OFF speed) and a
+ * brighter core/rings. Tap handling lives in HomeFragment
+ * (MainActivity.toggleVoiceSession()). Written fresh for MYRA.
  *
  * Animation is a TIME-BASED Choreographer loop with phases computed from
  * SystemClock.uptimeMillis() — no ValueAnimator (freezes when the system
@@ -33,7 +34,7 @@ class ReactorView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    /** True while a voice session is live: faster spin, brighter core. */
+    /** True while a voice session is live: ~2.8x spin, brighter core. */
     var active: Boolean = false
         set(value) {
             field = value
@@ -103,12 +104,13 @@ class ReactorView @JvmOverloads constructor(
         if (cx <= 0f || cy <= 0f) return
         val r = min(cx, cy) * 0.96f
         val t = SystemClock.uptimeMillis() / 1000f
-        val speedMul = if (active) 2.1f else 1f
+        // OFF: slow rotation. LIVE: ~2.8x faster + brighter (boost below).
+        val speedMul = if (active) 2.8f else 1f
         val rot = (t * 13f * speedMul) % 360f
         val rotSlow = (t * 5f) % 360f
         val pulse = sin((t * if (active) 2.4f else 1.5f).toDouble()).toFloat()
         val cyan = 0xFF00E5FF.toInt()
-        val boost = if (active) 1.3f else 1f
+        val boost = if (active) 1.45f else 1f
 
         val coreR = r * 0.40f * (1f + 0.028f * pulse * if (active) 1.5f else 1f)
         val key = "${(r * 2).toInt()}:${coreR.toInt()}"
