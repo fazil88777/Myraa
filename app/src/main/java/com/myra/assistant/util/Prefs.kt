@@ -48,6 +48,25 @@ object Prefs {
         get() = str("api_key", "")
         set(value) = putStr("api_key", value)
 
+    /** ElevenLabs API key (Settings > KEYS & DATA). Blank = Gemini Live voice. */
+    var elevenLabsKey: String
+        get() = str("elevenlabs_key", "")
+        set(value) = putStr("elevenlabs_key", value)
+
+    /** ElevenLabs Voice ID — which ElevenLabs voice speaks her replies. */
+    var elevenLabsVoiceId: String
+        get() = str("elevenlabs_voice_id", "")
+        set(value) = putStr("elevenlabs_voice_id", value)
+
+    /**
+     * True when BOTH ElevenLabs fields are set: the Live session then runs
+     * in TEXT mode and her replies are spoken by ElevenLabs instead of the
+     * Gemini Live native voice. Decided once at session start — never
+     * switched mid-session.
+     */
+    val elevenLabsEnabled: Boolean
+        get() = elevenLabsKey.isNotBlank() && elevenLabsVoiceId.isNotBlank()
+
     var orbEnabled: Boolean
         get() = bool("orb_enabled", true)
         set(value) = putBool("orb_enabled", value)

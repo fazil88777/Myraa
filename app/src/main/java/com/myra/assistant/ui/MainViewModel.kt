@@ -19,6 +19,7 @@ import com.myra.assistant.service.BorderOverlay
 import com.myra.assistant.service.FloatingOrbService
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.Prefs
+import com.myra.assistant.voice.ElevenLabsSpeaker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +70,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // finishes so the model doesn't hear it as user speech.
     private var speakWelcomeOnConnect = false
     private var tts: TextToSpeech? = null
+    // ElevenLabs voice for THIS session (null in Gemini Live audio mode).
+    // Created fresh in beginNewSession when key + voice id are saved in
+    // Settings; the Live session then runs in TEXT mode and this speaker
+    // voices the model's reply text sentence by sentence.
+    private var elSpeaker: ElevenLabsSpeaker? = null
     // Silence-fix state: auto-reconnect when the socket dies, and detect a
     // "half-dead" socket (mic hears the user, but no transcription ever arrives).
     private var manualStop = false
@@ -292,6 +298,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _statusText.postValue("Connecting...")
         val engine = AudioEngine()
         audio = engine
+        // ElevenLabs mode is decided HERE, once, at session start (the
+        // client's setup reads the same flag for its TEXT modality) —
+        // changing the key in Settings mid-session never switches voices.
+        elSpeaker = if (Prefs.elevenLabsEnabled) {
+            try {
+                ElevenLabsSpeaker(getApplication())
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            null
+        }
         val c = GeminiLiveClient(object : GeminiLiveClient.Listener {
             override fun onStatus(msg: String) {
                 if (gen != sessionGen) return
@@ -355,6 +373,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 modelRespondedThisSession = true
                 reconnectAttempts = 0
                 appendModelDelta(text)
+                // ElevenLabs mode: stream the same text to the TTS speaker,
+                // which cuts it into sentences and speaks them in order.
+                try {
+                    elSpeaker?.enqueueDelta(text)
+                } catch (_: Exception) {
+                }
             }
 
             override fun onInputTranscription(text: String) {
@@ -368,6 +392,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     return
                 }
                 showInputTranscription(text)
+                // Barge-in: the user started speaking — cut ElevenLabs
+                // playback off immediately, like native audio ducking.
+                try {
+                    elSpeaker?.stopAll()
+                } catch (_: Exception) {
+                }
             }
 
             override fun onTurnComplete() {
@@ -378,6 +408,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 toolTurnClosed = true
                 turnHasModelMessage = false
                 pendingInputMsgIndex = -1
+                // ElevenLabs mode: speak the reply's trailing partial
+                // sentence (no terminator ever arrived for it).
+                try {
+                    elSpeaker?.flushTurn()
+                } catch (_: Exception) {
+                }
             }
 
             override fun onToolCall(id: String, name: String, argsJson: String) {
@@ -422,6 +458,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (gen != sessionGen) return
                 try {
                     audio?.stopPlayback()
+                } catch (_: Exception) {
+                }
+                try {
+                    elSpeaker?.stopAll()
                 } catch (_: Exception) {
                 }
             }
@@ -526,12 +566,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Speaks "Welcome to Myra Assistant" through the phone's own voice engine
-     * (guaranteed to play — the AI model doesn't always volunteer a greeting),
-     * then runs [after] once the welcome has finished so the mic never picks
-     * it up as user speech.
+     * Speaks "Welcome to Myra Assistant" (guaranteed to play — the AI model
+     * doesn't always volunteer a greeting), then runs [after] once the
+     * welcome has finished so the mic never picks it up as user speech.
+     * ElevenLabs mode: the line is spoken in her ElevenLabs voice; if that
+     * fails for any reason (bad key, quota, network), the phone's own TTS
+     * below takes over so the greeting is never lost.
      */
     private fun speakWelcomeThen(after: () -> Unit) {
+        val speaker = elSpeaker
+        if (speaker == null) {
+            speakWelcomeViaTts(after)
+            return
+        }
+        val ui = Handler(Looper.getMainLooper())
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        try {
+            speaker.speakOnce(
+                "Welcome to Myra Assistant",
+                onPlayed = {
+                    ui.post {
+                        if (settled.compareAndSet(false, true)) {
+                            ui.postDelayed({ after() }, 300)
+                        }
+                    }
+                },
+                onFailed = {
+                    ui.post {
+                        if (settled.compareAndSet(false, true)) {
+                            speakWelcomeViaTts(after)
+                        }
+                    }
+                }
+            )
+            // Safety net: a hung ElevenLabs request must never hold the mic
+            // hostage — fall back to the phone TTS after a few seconds.
+            ui.postDelayed({
+                if (settled.compareAndSet(false, true)) {
+                    try {
+                        speaker.stopAll()
+                    } catch (_: Exception) {
+                    }
+                    speakWelcomeViaTts(after)
+                }
+            }, 9000)
+        } catch (_: Exception) {
+            speakWelcomeViaTts(after)
+        }
+    }
+
+    /** The original greeting path: the phone's own voice engine. */
+    private fun speakWelcomeViaTts(after: () -> Unit) {
         val ui = Handler(Looper.getMainLooper())
         try {
             val existing = tts
@@ -664,6 +749,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Exception) {
         }
         try {
+            elSpeaker?.release()
+        } catch (_: Exception) {
+        }
+        elSpeaker = null
+        try {
             sessionScope.cancel()
         } catch (_: Exception) {
         }
@@ -700,6 +790,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             audio?.release()
         } catch (_: Exception) {
         }
+        try {
+            elSpeaker?.release()
+        } catch (_: Exception) {
+        }
+        elSpeaker = null
         try {
             client?.disconnect()
         } catch (_: Exception) {

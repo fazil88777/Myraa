@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -161,6 +162,20 @@ class SettingsFragment : Fragment() {
                 toast("API key saved")
             }
         }
+        view.findViewById<View>(R.id.rowElKey).setOnClickListener {
+            secretDialog("ElevenLabs API Key", Prefs.elevenLabsKey, "ElevenLabs se key paste karo") {
+                Prefs.elevenLabsKey = it
+                refreshAll()
+                toast("ElevenLabs key saved")
+            }
+        }
+        view.findViewById<View>(R.id.rowElVoiceId).setOnClickListener {
+            textDialog("ElevenLabs Voice ID", Prefs.elevenLabsVoiceId, "Voice ID paste karo") {
+                Prefs.elevenLabsVoiceId = it
+                refreshAll()
+                toast("Voice ID saved")
+            }
+        }
         view.findViewById<View>(R.id.btnApiTest).setOnClickListener { runApiTest() }
 
         // ---- BACKUP ----
@@ -286,6 +301,14 @@ class SettingsFragment : Fragment() {
                 Prefs.assistantName.ifBlank { "MYRA" }
             v.findViewById<TextView>(R.id.rowApiKeyValue).text =
                 if (Prefs.apiKey.isBlank()) "Not set" else "(set ✓)"
+            v.findViewById<TextView>(R.id.rowElKeyValue).text =
+                if (Prefs.elevenLabsKey.isBlank()) "Not set" else "(set ✓)"
+            v.findViewById<TextView>(R.id.rowElVoiceIdValue).text =
+                if (Prefs.elevenLabsVoiceId.isBlank()) "Not set"
+                else Prefs.elevenLabsVoiceId.take(10) + "…"
+            v.findViewById<TextView>(R.id.elModeCaption).text =
+                if (Prefs.elevenLabsEnabled) "Voice ke liye ElevenLabs on hai"
+                else "Gemini Live ki default awaaz chalegi"
             v.findViewById<TextView>(R.id.rowLanguageValue).text =
                 LiaStyle.langLabel(Prefs.language)
             v.findViewById<TextView>(R.id.rowSpeechSpeedValue).text =
@@ -508,6 +531,25 @@ class SettingsFragment : Fragment() {
         val input = EditText(requireContext()).apply {
             setText(current)
             setHint(hint)
+        }
+        val wrap = FrameLayout(requireContext()).apply {
+            setPadding(48, 24, 48, 8)
+            addView(input)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setView(wrap)
+            .setPositiveButton("Save") { _, _ -> onSave(input.text.toString().trim()) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Same editor as textDialog, but the field masks input (API keys). */
+    private fun secretDialog(title: String, current: String, hint: String, onSave: (String) -> Unit) {
+        val input = EditText(requireContext()).apply {
+            setText(current)
+            setHint(hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         val wrap = FrameLayout(requireContext()).apply {
             setPadding(48, 24, 48, 8)
