@@ -94,6 +94,10 @@
             android:name=".service.ScheduledMessageReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".service.CheckInReceiver"
+            android:exported="false" />
+
         <service
             android:name=".service.ScheduledSenderService"
             android:exported="false"

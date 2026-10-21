@@ -9,9 +9,11 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.telecom.TelecomManager
 import android.telephony.SmsManager
+import com.myra.assistant.service.CheckInReceiver
 import com.myra.assistant.service.MyraAccessibilityService
 import com.myra.assistant.service.ScheduledMessageReceiver
 import com.myra.assistant.service.ScreenShareService
+import com.myra.assistant.util.CheckInStore
 import com.myra.assistant.util.ScheduledStore
 import com.myra.assistant.util.YouTubeStore
 import okhttp3.OkHttpClient
@@ -277,6 +279,24 @@ object ToolHandler {
                     else if (com.myra.assistant.util.MyraMemory.saveFamilyFact(f))
                         "OK: ghar walon ki ye baat yaad kar li — '$f'. Agli baar khud follow-up karungi."
                     else "OK: ye baat pehle se yaad hai."
+                }
+                "schedule_checkin" -> scheduleCheckin(
+                    args.optString("topic"),
+                    args.optString("message"),
+                    args.optDouble("after_minutes", -1.0),
+                    context
+                )
+                "save_secret" -> {
+                    val t = args.optString("text", "").trim()
+                    if (t.isEmpty()) "ERROR: secret khaali hai — kya chhupaun?"
+                    else if (com.myra.assistant.util.SecretVault.addSecret(t))
+                        "OK: secret vault mein band kar diya — ye baat sirf tum dono ke darmiyan rahegi. Ise kabhi khud mat chherna; sirf jab wo khud is mauzu ko uthaye."
+                    else "ERROR: secret save nahi ho saka."
+                }
+                "search_secrets" -> {
+                    val q = args.optString("query", "").trim()
+                    if (q.isEmpty()) "ERROR: query khaali hai — vault mein kya dhoondun?"
+                    else com.myra.assistant.util.SecretVault.searchSecrets(q)
                 }
                 "web_search" -> webSearch(args.optString("query"))
                 "read_webpage" -> readWebpage(args.optString("url"))
@@ -640,6 +660,39 @@ object ToolHandler {
         val parts = sm.divideMessage(message)
         sm.sendMultipartTextMessage(number, null, parts, null, null)
         return "OK: sms sent"
+    }
+
+    // ---------------- proactive check-ins (her own caring notifications) ----------------
+
+    /**
+     * schedule_checkin tool: stores one caring follow-up she composed
+     * herself (topic + message + when) and arms its inexact alarm. The
+     * message arrives later as a notification (CheckInReceiver) — she
+     * cannot speak first, this is how she reaches out.
+     */
+    private fun scheduleCheckin(
+        topic: String,
+        message: String,
+        afterMinutes: Double,
+        context: Context
+    ): String {
+        val msg = message.trim()
+        if (msg.isEmpty()) return "ERROR: check-in ka message khaali hai — pehle apni boli mein pyaar bhara message likho"
+        if (afterMinutes < 1.0 || afterMinutes > 7 * 24 * 60) {
+            return "ERROR: waqt samajh nahi aaya — after_minutes 1 se 10080 (ek hafta) ke darmiyan rakho"
+        }
+        val at = System.currentTimeMillis() + (afterMinutes * 60_000).toLong()
+        val entry = CheckInStore.Entry(
+            System.currentTimeMillis(),
+            topic.trim().take(80),
+            msg.take(300),
+            at
+        )
+        CheckInStore.add(context, entry)
+        CheckInReceiver.scheduleAlarm(context, entry)
+        val whenStr = SimpleDateFormat("d MMM, h:mm a", Locale.US).format(Date(at))
+        return "OK: check-in lag gaya — $whenStr par use ye notification milega: \"$msg\" " +
+                "(NOTE: alarm inexact hai — kuch minute idhar-udhar ho sakta hai)"
     }
 
     // ---------------- scheduled WhatsApp messages ----------------

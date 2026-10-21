@@ -304,6 +304,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             com.myra.assistant.util.MoodManager.onUserSessionStart()
         } catch (_: Exception) {
         }
+        // Routine mirroring: stamp WHEN his sessions happen so she
+        // learns his daily rhythm (median bedtime / wake time) and can
+        // nudge him lovingly when he is up far past his usual hour.
+        // Fresh manual starts only — same reasoning as the mood update.
+        try {
+            com.myra.assistant.util.RoutineTracker.recordSessionStart()
+        } catch (_: Exception) {
+        }
         beginNewSession(apiKey)
     }
 

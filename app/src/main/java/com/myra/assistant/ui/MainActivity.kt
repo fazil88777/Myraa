@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val REQ_CORE = 1001
         private const val REQ_CAMERA = 1002
+        private const val REQ_NOTIF = 1003
     }
 
     // One-time system dialog: "Allow MYRA to record your screen?"
@@ -101,6 +102,17 @@ class MainActivity : AppCompatActivity() {
 
         if (!PermissionHelper.hasAllCore(this)) {
             PermissionHelper.requestCore(this, REQ_CORE)
+        } else if (android.os.Build.VERSION.SDK_INT >= 33 && !Prefs.notifPermAsked &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            // One-time, guarded ask so MYRA's proactive check-ins can
+            // arrive as notifications on Android 13+. Never repeated,
+            // never blocking — she simply stays quiet-first without it.
+            Prefs.notifPermAsked = true
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF
+            )
         }
 
         // Camera permission for camera vision ("camera on karo")

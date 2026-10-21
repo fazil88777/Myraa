@@ -29,6 +29,11 @@ class BootReceiver : BroadcastReceiver() {
                 ScheduledMessageReceiver.rescheduleAll(context)
             } catch (_: Exception) {
             }
+            try {
+                // MYRA's own proactive check-ins: re-arm every stored one.
+                CheckInReceiver.rescheduleAll(context)
+            } catch (_: Exception) {
+            }
         }
     }
 }

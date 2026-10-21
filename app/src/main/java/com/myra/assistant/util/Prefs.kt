@@ -239,4 +239,18 @@ object Prefs {
     var moodGapHours: Long
         get() = long("mood_gap_hours", 0L)
         set(value) = putLong("mood_gap_hours", value)
+
+    // ---------- Routine mirroring + notifications ----------
+
+    /** Rolling session-start stamps (comma-separated epoch ms, ~last 90),
+     *  written by RoutineTracker on every fresh session start. */
+    var sessionStartStamps: String
+        get() = str("session_start_stamps", "")
+        set(value) = putStr("session_start_stamps", value)
+
+    /** The one-time POST_NOTIFICATIONS runtime request (Android 13+) was
+     *  already shown — never ask twice. */
+    var notifPermAsked: Boolean
+        get() = bool("notif_perm_asked", false)
+        set(value) = putBool("notif_perm_asked", value)
 }

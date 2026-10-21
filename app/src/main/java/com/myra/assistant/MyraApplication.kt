@@ -4,6 +4,7 @@ import android.app.Application
 import com.myra.assistant.service.BorderOverlay
 import com.myra.assistant.util.MyraMemory
 import com.myra.assistant.util.Prefs
+import com.myra.assistant.util.SecretVault
 
 class MyraApplication : Application() {
     override fun onCreate() {
@@ -17,6 +18,7 @@ class MyraApplication : Application() {
         // after a few sentences on the free tier; Live does not.
         Prefs.migrateLiveDefault()
         MyraMemory.init(this)
+        SecretVault.init(this)
         // Accurate app-foreground tracking for the floating neon border:
         // registered at process start so no activity transition is missed.
         registerActivityLifecycleCallbacks(BorderOverlay.lifecycleCallbacks)
