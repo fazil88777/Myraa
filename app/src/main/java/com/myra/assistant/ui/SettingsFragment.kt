@@ -320,7 +320,7 @@ class SettingsFragment : Fragment() {
             v.findViewById<TextView>(R.id.rowEdgeVoiceValue).text =
                 if (Prefs.edgeVoice == "hi-IN-SwaraNeural") "Swara (Hindi)" else "Uzma (Urdu)"
             v.findViewById<TextView>(R.id.voiceEngineCaption).text =
-                if (Prefs.transcriptVoiceEnabled) "Free Edge awaaz on hai — koi key nahi chahiye"
+                if (Prefs.transcriptVoiceEnabled) "Edge awaaz (fail ho to Google / phone ki awaaz khud aa jayegi)"
                 else "Gemini Live ki apni awaaz chalegi"
             v.findViewById<TextView>(R.id.rowLanguageValue).text =
                 LiaStyle.langLabel(Prefs.language)

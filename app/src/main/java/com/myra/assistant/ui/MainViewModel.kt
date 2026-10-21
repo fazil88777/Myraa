@@ -4,11 +4,9 @@ import android.app.Application
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
-import android.speech.tts.TextToSpeech
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import java.util.Locale
 import com.myra.assistant.ai.AudioEngine
 import com.myra.assistant.ai.CameraVision
 import com.myra.assistant.ai.GeminiLiveClient
@@ -19,6 +17,7 @@ import com.myra.assistant.service.BorderOverlay
 import com.myra.assistant.service.FloatingOrbService
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.Prefs
+import com.myra.assistant.voice.DeviceTts
 import com.myra.assistant.voice.EdgeTtsSpeaker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -52,16 +51,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _toastEvent.postValue(ToastEvent(++toastSeq, message))
     }
 
-    /** EdgeTtsSpeaker synthesis failure (HTTP code, -1 = network/other):
-     *  surfaced ONCE per session so a dead Edge service / broken network is
-     *  visible on screen instead of silently dropped segments. The exact
-     *  code is logged by the speaker; the toast stays simple for the user. */
-    private fun notifyVoiceError(code: Int) {
-        if (voiceErrorToastShown) return
-        voiceErrorToastShown = true
-        postToast("Edge awaaz fail — net check karke dobara try karo")
-    }
-
     private val _isConnected = MutableLiveData(false)
     val isConnected: LiveData<Boolean> = _isConnected
 
@@ -91,7 +80,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // (never on auto-reconnects). Mic capture starts after the welcome
     // finishes so the model doesn't hear it as user speech.
     private var speakWelcomeOnConnect = false
-    private var tts: TextToSpeech? = null
     // Edge TTS voice for THIS session (null in Gemini Live audio mode).
     // Created fresh in beginNewSession when the Voice Engine is EDGE; the
     // Live session stays in AUDIO mode but asks for output transcription,
@@ -118,12 +106,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var lastDeathInfo: String? = null
     // The give-up toast fires once per failure chain.
     private var giveUpToastShown = false
-    // Edge synthesis-failure toast fires ONCE per session; the reply
-    // segments and the greeting's speakOnce share this flag, so whichever
-    // path fails first shows the failure exactly once. Reset every
-    // beginNewSession, next to the speaker's creation.
-    @Volatile
-    private var voiceErrorToastShown = false
     // Coroutine scope bound to the CURRENT session: cancelled on every teardown
     // so a tool call from the dying session can never answer the new socket.
     private var sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -369,12 +351,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // The voice engine is decided HERE, once, at session start (the
         // client's setup reads the same flag to add output transcription)
         // — changing the key in Settings mid-session never switches voices.
-        voiceErrorToastShown = false
         voiceSpeaker = if (Prefs.transcriptVoiceEnabled) {
             try {
-                EdgeTtsSpeaker(getApplication()).also { sp ->
-                    sp.onError = { code -> notifyVoiceError(code) }
-                }
+                EdgeTtsSpeaker(getApplication())
             } catch (_: Exception) {
                 null
             }
@@ -669,9 +648,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Speaks "Welcome to Myra Assistant" (guaranteed to play — the AI model
      * doesn't always volunteer a greeting), then runs [after] once the
      * welcome has finished so the mic never picks it up as user speech.
-     * Edge TTS mode: the line is spoken in her Edge voice; if that
-     * fails for any reason (bad key, quota, network), the phone's own TTS
-     * below takes over so the greeting is never lost.
+     * Edge TTS mode: the line goes through the speaker's fail-safe chain
+     * (Edge -> Google Translate TTS -> the phone's own TTS); if even that
+     * somehow fails, the phone's own TTS below takes over so the
+     * greeting is never lost.
      */
     private fun speakWelcomeThen(after: () -> Unit) {
         val speaker = voiceSpeaker
@@ -715,44 +695,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** The original greeting path: the phone's own voice engine. */
+    /**
+     * The original greeting path: the phone's own voice engine — the
+     * SHARED [DeviceTts] engine, the same one the Edge speaker's
+     * last-resort fallback speaks through (one engine for the app).
+     */
     private fun speakWelcomeViaTts(after: () -> Unit) {
         val ui = Handler(Looper.getMainLooper())
         try {
-            val existing = tts
-            if (existing != null) {
-                // Engine already warm: speak right away.
-                existing.speak(
-                    "Welcome to Myra Assistant",
-                    TextToSpeech.QUEUE_FLUSH, null, "myra_welcome"
-                )
+            DeviceTts.speakWelcome(getApplication(), "Welcome to Myra Assistant") {
                 ui.postDelayed({ after() }, 2600)
-            } else {
-                tts = TextToSpeech(getApplication<Application>()) { status ->
-                    if (status == TextToSpeech.SUCCESS) {
-                        tts?.language = Locale.US
-                        pickFemaleVoice()
-                        tts?.speak(
-                            "Welcome to Myra Assistant",
-                            TextToSpeech.QUEUE_FLUSH, null, "myra_welcome"
-                        )
-                    }
-                    ui.postDelayed({ after() }, 2600)
-                }
             }
         } catch (_: Exception) {
             after()
-        }
-    }
-
-    /** Prefers a female English TTS voice when the phone offers one. */
-    private fun pickFemaleVoice() {
-        try {
-            val v = tts?.voices
-                ?.firstOrNull { it.locale.language == "en" && it.name.contains("female", true) }
-                ?: tts?.voices?.firstOrNull { it.locale.language == "en" }
-            v?.let { tts?.voice = it }
-        } catch (_: Exception) {
         }
     }
 
@@ -846,7 +801,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         CameraVision.refresh(getApplication())
         CameraVision.onFrame = null
         try {
-            tts?.stop()
+            DeviceTts.stop()
         } catch (_: Exception) {
         }
         try {

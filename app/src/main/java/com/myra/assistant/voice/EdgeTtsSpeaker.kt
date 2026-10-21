@@ -42,8 +42,17 @@ import java.util.concurrent.TimeUnit
  * crying / missing / hurt -> slower and lower, happy / romantic /
  * playful -> a touch brighter and faster.
  *
+ * FAIL-SAFE CHAIN (per segment, so her voice NEVER just fails):
+ *  1. Edge Neural TTS over the WebSocket below (~3s budget);
+ *  2. Google Translate TTS over plain HTTPS (translate_tts, the same
+ *     text, chunked to what the endpoint accepts);
+ *  3. the phone's own TTS engine via [DeviceTts] (offline, always there).
+ * Every layer fails SILENTLY into the next (log only) — there is no
+ * user-visible "voice failed" message anywhere.
+ *
  * Robustness rules (a TTS failure must NEVER break the session):
- *  - every network/playback error just drops that one segment;
+ *  - every network/playback error just moves to the next layer or, at
+ *    worst, drops that one segment;
  *  - stopAll() (barge-in, session stop, shutdown) cancels the in-flight
  *    socket, clears the queue and halts playback immediately via a
  *    generation counter — stale work from an older moment can never play.
@@ -82,11 +91,17 @@ class EdgeTtsSpeaker(context: Context) {
     private val appCtx: Context = context.applicationContext
 
     // Own client (NOT the Live websocket client). Read timeout is 0 like
-    // the Live client's — the per-segment 15s latch below is the timeout
-    // that matters for a synthesis socket.
+    // the Live client's — the per-segment ~3s latch in synthesize() is
+    // the timeout that matters for a synthesis socket.
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
+
+    /** Short-timeout client for the Google Translate TTS fallback. */
+    private val googleHttp: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(3, TimeUnit.SECONDS)
         .build()
 
     private val queue = LinkedBlockingQueue<Segment>()
@@ -101,24 +116,10 @@ class EdgeTtsSpeaker(context: Context) {
     @Volatile private var currentPlayer: MediaPlayer? = null
     @Volatile private var playLatch: CountDownLatch? = null
 
-    /**
-     * Synthesis failure reporter, wired by MainViewModel: invoked from the
-     * pipeline thread on EVERY failed synthesis with the HTTP status code
-     * of a failed WebSocket upgrade, or -1 for a network / timeout /
-     * protocol failure. The ViewModel turns the FIRST failure of a session
-     * into a user-visible toast — a failed request must never be only a
-     * silently dropped segment. NOT invoked when the socket was merely
-     * cancelled by stopAll() (barge-in / session stop is no failure).
-     */
-    @Volatile
-    var onError: ((Int) -> Unit)? = null
-
-    private fun notifyError(code: Int) {
-        try {
-            onError?.invoke(code)
-        } catch (_: Exception) {
-        }
-    }
+    /** Google Translate TTS wants a plain desktop-browser User-Agent. */
+    private val googleUa =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
 
     /** Streamed reply text not yet cut into a full sentence. */
     private val buffer = StringBuilder()
@@ -187,6 +188,10 @@ class EdgeTtsSpeaker(context: Context) {
         }
         currentSocket = null
         try {
+            DeviceTts.stop()
+        } catch (_: Exception) {
+        }
+        try {
             currentPlayer?.stop()
         } catch (_: Exception) {
         }
@@ -222,26 +227,132 @@ class EdgeTtsSpeaker(context: Context) {
         queue.offer(Segment(clean, generation))
     }
 
+    /**
+     * Speak one segment through the fail-safe chain — see the class doc.
+     * Returns via the segment's callbacks: onPlayed when ANY layer spoke
+     * it (or silence was deliberately chosen by a barge-in), onFailed
+     * only when no layer could speak at all.
+     */
     private fun playSegment(seg: Segment) {
-        var ok = false
-        var file: File? = null
+        var handled = false
         try {
-            val bytes = synthesize(seg.text)
-            if (bytes != null && seg.gen == generation && !released) {
-                file = File.createTempFile("myra_edge_", ".mp3", appCtx.cacheDir)
-                file.writeBytes(bytes)
-                ok = playFile(file, seg.gen)
+            // Layer 1: Edge Neural TTS (fresh WebSocket, ~3s budget).
+            val edgeBytes = synthesize(seg.text)
+            // Layer 2: Google Translate TTS (plain HTTPS, ~3s budget),
+            // tried only when Edge produced nothing.
+            val chunks: List<ByteArray>? =
+                if (edgeBytes != null) listOf(edgeBytes)
+                else synthesizeGoogle(seg.text, seg.gen)
+            if (chunks != null && seg.gen == generation && !released) {
+                when (playChunks(chunks, seg.gen)) {
+                    // Fully/partly spoken, or interrupted before any audio
+                    // (barge-in): either way the segment is DONE — the
+                    // device voice must not repeat or fight it.
+                    1, 0 -> handled = true
+                    // -1: failed before a single byte played — fall through.
+                }
+            }
+            // Layer 3: the phone's own TTS engine (DeviceTts) — offline,
+            // always installed; blocks this thread so order is preserved.
+            if (!handled && seg.gen == generation && !released) {
+                handled = DeviceTts.speakBlocking(appCtx, seg.text) {
+                    seg.gen != generation || released
+                }
             }
         } catch (e: Exception) {
             Log.d(TAG, "segment dropped: ${e.javaClass.simpleName}: ${e.message}")
-        } finally {
+        }
+        if (handled) seg.onPlayed?.let { safeCallback(it) }
+        else seg.onFailed?.let { safeCallback(it) }
+    }
+
+    /**
+     * Play MP3 chunks back-to-back as ONE segment.
+     * Returns 1 = spoken (fully, or partly before an interruption),
+     * 0 = interrupted before any audio played, -1 = failed before any
+     * audio played (the caller may fall through to the device voice).
+     */
+    private fun playChunks(chunks: List<ByteArray>, gen: Int): Int {
+        var playedAny = false
+        for (bytes in chunks) {
+            if (gen != generation || released) return if (playedAny) 1 else 0
+            var file: File? = null
             try {
-                file?.delete()
-            } catch (_: Exception) {
+                file = File.createTempFile("myra_tts_", ".mp3", appCtx.cacheDir)
+                file.writeBytes(bytes)
+                if (!playFile(file, gen)) return if (playedAny) 1 else -1
+                playedAny = true
+            } catch (e: Exception) {
+                Log.d(TAG, "chunk play failed: ${e.javaClass.simpleName}: ${e.message}")
+                return if (playedAny) 1 else -1
+            } finally {
+                try {
+                    file?.delete()
+                } catch (_: Exception) {
+                }
             }
         }
-        if (ok) seg.onPlayed?.let { safeCallback(it) }
-        else seg.onFailed?.let { safeCallback(it) }
+        return 1
+    }
+
+    // ------------------------------------------------------------------
+    // Layer 2: Google Translate TTS (free HTTPS MP3 stream)
+    // ------------------------------------------------------------------
+
+    /** Google `tl` code matching the selected Edge voice's language. */
+    private fun googleLang(): String =
+        if (Prefs.edgeVoice.startsWith("hi")) "hi" else "ur"
+
+    /** Split into <=180-char chunks at word boundaries (endpoint limit). */
+    private fun splitForGoogle(text: String): List<String> {
+        if (text.length <= 180) return listOf(text)
+        val out = mutableListOf<String>()
+        var rest = text
+        while (rest.length > 180) {
+            var cut = rest.lastIndexOf(' ', 180)
+            if (cut < 60) cut = 180
+            out.add(rest.substring(0, cut).trim())
+            rest = rest.substring(cut).trim()
+        }
+        if (rest.isNotEmpty()) out.add(rest)
+        return out.filter { it.isNotEmpty() }
+    }
+
+    /**
+     * Fetch this segment's MP3(s) from Google Translate TTS, in order.
+     * Null on ANY failure (HTTP error, network, stale generation) —
+     * silently: the device voice is the next layer.
+     */
+    private fun synthesizeGoogle(text: String, gen: Int): List<ByteArray>? {
+        return try {
+            val lang = googleLang()
+            val parts = splitForGoogle(text)
+            val out = ArrayList<ByteArray>(parts.size)
+            for (part in parts) {
+                if (gen != generation || released) return null
+                val url = "https://translate.google.com/translate_tts?ie=UTF-8" +
+                    "&q=" + java.net.URLEncoder.encode(part, "UTF-8") +
+                    "&tl=" + lang + "&client=tw-ob"
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("User-Agent", googleUa)
+                    .build()
+                val fetched = googleHttp.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        Log.d(TAG, "Google TTS failed: HTTP ${resp.code}")
+                        null
+                    } else {
+                        resp.body?.bytes()?.takeIf { it.isNotEmpty() }
+                    }
+                }
+                if (fetched == null) return null
+                out.add(fetched)
+            }
+            if (out.isEmpty()) null else out
+        } catch (e: Exception) {
+            Log.d(TAG, "Google TTS error: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
     }
 
     // ------------------------------------------------------------------
@@ -344,11 +455,12 @@ class EdgeTtsSpeaker(context: Context) {
      * speech.config + ssml frames, accumulates the MP3 payload of every
      * binary "Path:audio" frame, and completes when the "Path:turn.end"
      * text frame arrives. Null on ANY error (upgrade failure, network,
-     * timeout, protocol) — with onError notified unless the socket was
-     * cancelled by stopAll() (generation moved on).
+     * timeout, protocol) — the caller then tries the next layer of the
+     * fail-safe chain. The attempt is capped at ~3 seconds: on networks
+     * where this endpoint is blocked, failing FAST is what lets the
+     * fallback voices answer instead of silence.
      */
     private fun synthesize(text: String): ByteArray? {
-        val genAtStart = generation
         val result = SynthResult()
         val latch = CountDownLatch(1)
         val audio = ByteArrayOutputStream()
@@ -420,7 +532,7 @@ class EdgeTtsSpeaker(context: Context) {
         })
         currentSocket = ws
         val finished = try {
-            latch.await(15, TimeUnit.SECONDS)
+            latch.await(3, TimeUnit.SECONDS)
         } catch (_: InterruptedException) {
             false
         }
@@ -430,18 +542,15 @@ class EdgeTtsSpeaker(context: Context) {
                 ws.cancel()
             } catch (_: Exception) {
             }
-            Log.d(TAG, "TTS synthesis timed out")
-            if (genAtStart == generation && !released) notifyError(-1)
+            Log.d(TAG, "TTS synthesis timed out (3s) — next layer")
             return null
         }
         val bytes = result.audio
         if (bytes == null || bytes.isEmpty()) {
+            // Also the stopAll()-cancelled case (barge-in / session stop):
+            // same handling — no audio, next layer checks the generation
+            // first and stays silent.
             Log.d(TAG, "TTS synthesis failed: code=${result.failureCode}")
-            // A socket cancelled by stopAll() (barge-in / session stop) is
-            // NOT a failure — never surface it as one.
-            if (genAtStart == generation && !released) {
-                notifyError(result.failureCode ?: -1)
-            }
             return null
         }
         return bytes

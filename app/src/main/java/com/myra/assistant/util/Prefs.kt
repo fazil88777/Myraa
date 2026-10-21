@@ -48,11 +48,34 @@ object Prefs {
         get() = str("api_key", "")
         set(value) = putStr("api_key", value)
 
-    /** Voice engine: "EDGE" (Microsoft Edge Neural TTS — free, no key) or
-     *  "GEMINI" (Gemini Live's own native voice). Settings > KEYS & DATA. */
+    /** Voice engine: "GEMINI" (Gemini Live's own native voice — the
+     *  default; it rides the same connection that already works) or
+     *  "EDGE" (Microsoft Edge Neural TTS — free, no key, with Google
+     *  Translate TTS and the phone's own TTS as silent fallbacks).
+     *  Settings > KEYS & DATA. */
     var voiceEngine: String
-        get() = str("voice_engine", "EDGE")
+        get() = str("voice_engine", "GEMINI")
         set(value) = putStr("voice_engine", value)
+
+    /** One-time fail-safe migration ran (see migrateVoiceFailSafe). */
+    var voiceFailSafeMigrated: Boolean
+        get() = bool("voice_failsafe_migrated", false)
+        set(value) = putBool("voice_failsafe_migrated", value)
+
+    /**
+     * One-time migration for the fail-safe voice build: installs made
+     * under the old defaults already stored voiceEngine="EDGE", and on
+     * some networks the Edge endpoint is blocked outright — so on the
+     * FIRST start with this build, force the engine to GEMINI (the
+     * voice that provably connects) exactly once. A later manual switch
+     * back to EDGE in Settings is respected (the flag stays set).
+     * Call once at app start, after init.
+     */
+    fun migrateVoiceFailSafe() {
+        if (!::sp.isInitialized || voiceFailSafeMigrated) return
+        voiceEngine = "GEMINI"
+        voiceFailSafeMigrated = true
+    }
 
     /** Edge Neural voice that speaks her replies in EDGE engine mode. */
     var edgeVoice: String
