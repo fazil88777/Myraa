@@ -2,7 +2,8 @@ package com.myra.assistant.voice
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.MediaPlayer
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.util.Base64
 import android.util.Log
 import com.myra.assistant.util.MoodManager
@@ -13,8 +14,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -38,13 +37,19 @@ import java.util.concurrent.TimeUnit
  * missing / hurt -> slow and heavy-hearted; happy / romantic / playful
  * -> bright and loving).
  *
- * The TTS model returns raw 24 kHz 16-bit mono PCM (audio/L16); a
- * standard 44-byte WAV header is prepended and the clip plays through
- * the same MediaPlayer temp-file path as the other speakers.
+ * The TTS model returns raw 16-bit mono PCM (audio/L16, usually
+ * 24 kHz); the PCM is streamed straight into an AudioTrack — no WAV
+ * header, no temp file, no MediaPlayer — at the sample rate parsed
+ * from the response's inlineData mimeType.
  *
  * Robustness rules (a TTS failure must NEVER break the session):
- *  - every network/playback error just drops that one segment, silently
+ *  - every network/playback error just drops that one segment
  *    (log only — there is no user-visible "voice failed" message);
+ *  - ONE exception, a temporary debug surface at Fazil's request:
+ *    MainViewModel toasts "Playing: Gemini Aoede" once per session
+ *    when the first segment actually starts playing, and
+ *    "Audio Error: <reason>" once per session on the first failure —
+ *    so a silent voice is never again undiagnosable;
  *  - stopAll() (barge-in, session stop, shutdown) clears the queue and
  *    halts playback immediately via a generation counter — stale work
  *    from an older moment can never play.
@@ -93,8 +98,18 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
     /** Bumped by stopAll(): anything queued/playing from an older gen is dropped. */
     @Volatile private var generation = 0
     @Volatile private var released = false
-    @Volatile private var currentPlayer: MediaPlayer? = null
-    @Volatile private var playLatch: CountDownLatch? = null
+    @Volatile private var currentTrack: AudioTrack? = null
+
+    /**
+     * Debug surface wired by MainViewModel (temporary, Fazil's
+     * request): receives "Playing: Gemini Aoede" when the first
+     * segment of the session actually starts playing, and
+     * "Audio Error: <reason>" on the first failure — each at most
+     * once per speaker instance (= once per session).
+     */
+    @Volatile var onDebugEvent: ((String) -> Unit)? = null
+    @Volatile private var playingNotified = false
+    @Volatile private var errorNotified = false
 
     /** Streamed reply text not yet cut into a full sentence. */
     private val buffer = StringBuilder()
@@ -156,16 +171,18 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
         generation++
         queue.clear()
         synchronized(buffer) { buffer.setLength(0) }
+        // Pause + flush halts the sound immediately; the pipeline
+        // thread's playPcm loop sees the generation bump and stops /
+        // releases the track itself (releasing from here while a
+        // blocking write is in flight is not safe on every device).
         try {
-            currentPlayer?.stop()
+            currentTrack?.pause()
         } catch (_: Exception) {
         }
         try {
-            currentPlayer?.release()
+            currentTrack?.flush()
         } catch (_: Exception) {
         }
-        currentPlayer = null
-        playLatch?.countDown()
     }
 
     /** Session is over for good: stop everything and kill the pipeline thread. */
@@ -194,21 +211,14 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
 
     private fun playSegment(seg: Segment) {
         var ok = false
-        var file: File? = null
         try {
-            val wav = synthesize(seg.text)
-            if (wav != null && seg.gen == generation && !released) {
-                file = File.createTempFile("myra_gtts_", ".wav", appCtx.cacheDir)
-                file.writeBytes(wav)
-                ok = playFile(file, seg.gen)
+            val res = synthesize(seg.text)
+            if (res != null && seg.gen == generation && !released) {
+                ok = playPcm(res.pcm, res.sampleRate, seg.gen)
             }
         } catch (e: Exception) {
             Log.d(TAG, "segment dropped: ${e.javaClass.simpleName}: ${e.message}")
-        } finally {
-            try {
-                file?.delete()
-            } catch (_: Exception) {
-            }
+            notifyErrorOnce("playback: ${e.javaClass.simpleName}")
         }
         if (ok) seg.onPlayed?.let { safeCallback(it) }
         else seg.onFailed?.let { safeCallback(it) }
@@ -232,17 +242,43 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
             else -> ""
         }
 
+    /** One successful synthesis: raw PCM bytes + their sample rate. */
+    private class SynthResult(val pcm: ByteArray, val sampleRate: Int)
+
+    /** First-failure debug toast ("Audio Error: <reason>"), once per session. */
+    private fun notifyErrorOnce(reason: String) {
+        if (errorNotified) return
+        errorNotified = true
+        try {
+            onDebugEvent?.invoke("Audio Error: $reason")
+        } catch (_: Exception) {
+        }
+    }
+
+    /** First-playing debug toast ("Playing: Gemini Aoede"), once per session. */
+    private fun notifyPlayingOnce() {
+        if (playingNotified) return
+        playingNotified = true
+        try {
+            onDebugEvent?.invoke("Playing: Gemini Aoede")
+        } catch (_: Exception) {
+        }
+    }
+
     /**
      * One Gemini TTS synthesis: POST generateContent for the TTS model
      * with the style instruction + segment as the text, the app's Gemini
      * key in the X-goog-api-key header (same style as the Settings API
-     * test). Returns WAV bytes (PCM + header), null on ANY failure —
-     * silently: the segment is simply dropped.
+     * test). Returns the raw PCM + the sample rate declared in the
+     * response's inlineData mimeType ("audio/L16;rate=24000"), null on
+     * ANY failure — the segment is simply dropped, but the FIRST
+     * failure's reason is surfaced once via [onDebugEvent].
      */
-    private fun synthesize(text: String): ByteArray? {
+    private fun synthesize(text: String): SynthResult? {
         val key = Prefs.apiKey
         if (key.isBlank()) {
             Log.d(TAG, "no Gemini key set — segment dropped")
+            notifyErrorOnce("no Gemini key set")
             return null
         }
         return try {
@@ -282,6 +318,7 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
             http.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     Log.d(TAG, "Gemini TTS failed: HTTP ${resp.code}")
+                    notifyErrorOnce("HTTP ${resp.code}")
                     return null
                 }
                 val json = JSONObject(resp.body?.string() ?: return null)
@@ -290,113 +327,116 @@ class GeminiTtsSpeaker(context: Context) : VoiceSpeaker {
                     ?.optJSONObject("content")
                     ?.optJSONArray("parts")
                     ?: return null
-                var pcm: ByteArray? = null
+                var result: SynthResult? = null
                 for (i in 0 until parts.length()) {
-                    val data = parts.optJSONObject(i)
+                    val inline = parts.optJSONObject(i)
                         ?.optJSONObject("inlineData")
-                        ?.optString("data")
-                    if (!data.isNullOrEmpty()) {
-                        pcm = Base64.decode(data, Base64.DEFAULT)
-                        break
-                    }
+                        ?: continue
+                    val data = inline.optString("data")
+                    if (data.isNullOrEmpty()) continue
+                    val pcm = Base64.decode(data, Base64.DEFAULT)
+                    if (pcm.isEmpty()) continue
+                    // The response declares its own rate ("audio/L16;
+                    // rate=24000") — trust it instead of assuming 24 kHz.
+                    val mime = inline.optString("mimeType")
+                    val rate = Regex("rate=(\\d+)").find(mime)
+                        ?.groupValues?.get(1)?.toIntOrNull() ?: SAMPLE_RATE
+                    result = SynthResult(pcm, rate)
+                    break
                 }
-                if (pcm == null || pcm.isEmpty()) {
+                if (result == null) {
                     Log.d(TAG, "Gemini TTS: no audio part in response")
-                    null
-                } else {
-                    wavHeader(pcm.size) + pcm
+                    notifyErrorOnce("no audio in response")
                 }
+                result
             }
         } catch (e: Exception) {
             Log.d(TAG, "Gemini TTS error: ${e.javaClass.simpleName}: ${e.message}")
+            notifyErrorOnce(e.javaClass.simpleName)
             null
         }
     }
 
-    /** Standard 44-byte WAV (RIFF) header for raw PCM16 mono at 24 kHz. */
-    private fun wavHeader(dataSize: Int): ByteArray {
-        val header = ByteArray(44)
-        fun putStr(off: Int, s: String) {
-            for (i in s.indices) header[off + i] = s[i].code.toByte()
-        }
-
-        fun putInt(off: Int, v: Int) {
-            header[off] = (v and 0xFF).toByte()
-            header[off + 1] = ((v shr 8) and 0xFF).toByte()
-            header[off + 2] = ((v shr 16) and 0xFF).toByte()
-            header[off + 3] = ((v shr 24) and 0xFF).toByte()
-        }
-
-        fun putShort(off: Int, v: Int) {
-            header[off] = (v and 0xFF).toByte()
-            header[off + 1] = ((v shr 8) and 0xFF).toByte()
-        }
-        putStr(0, "RIFF")
-        putInt(4, 36 + dataSize)
-        putStr(8, "WAVE")
-        putStr(12, "fmt ")
-        putInt(16, 16)                 // fmt chunk size
-        putShort(20, 1)                // audio format: PCM
-        putShort(22, 1)                // channels: mono
-        putInt(24, SAMPLE_RATE)        // 24000 Hz
-        putInt(28, SAMPLE_RATE * 2)    // byte rate: 24000 * 16bit * 1ch / 8
-        putShort(32, 2)                // block align: 1ch * 16bit / 8
-        putShort(34, 16)               // bits per sample
-        putStr(36, "data")
-        putInt(40, dataSize)
-        return header
-    }
-
-    /** Play one WAV file to completion. False when stopped or on error. */
-    private fun playFile(file: File, gen: Int): Boolean {
-        val latch = CountDownLatch(1)
-        playLatch = latch
-        // Written by the completion listener before countDown(), read after
-        // await() returns — the latch itself provides the memory barrier.
-        var completed = false
-        val mp = MediaPlayer()
-        currentPlayer = mp
+    /**
+     * Stream raw PCM straight into an AudioTrack (MODE_STREAM) and wait
+     * until it has actually played out. No WAV header, no temp file, no
+     * MediaPlayer — the bytes the TTS model returned are exactly what
+     * the track consumes. False when stopped (barge-in / session end)
+     * or on any error.
+     */
+    private fun playPcm(pcm: ByteArray, rate: Int, gen: Int): Boolean {
+        var track: AudioTrack? = null
         try {
-            mp.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
+            val minBuf = AudioTrack.getMinBufferSize(
+                rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT
             )
-            mp.setDataSource(file.absolutePath)
-            mp.setOnPreparedListener { p ->
-                try {
-                    if (gen == generation && !released) p.start() else latch.countDown()
-                } catch (_: Exception) {
-                    latch.countDown()
+            val bufSize = maxOf(
+                if (minBuf > 0) minBuf else rate,
+                minOf(pcm.size, rate * 2)
+            )
+            track = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(rate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(bufSize)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+            if (track.state != AudioTrack.STATE_INITIALIZED) {
+                Log.d(TAG, "AudioTrack not initialized")
+                notifyErrorOnce("playback: AudioTrack init")
+                return false
+            }
+            currentTrack = track
+            track.play()
+            notifyPlayingOnce()
+            var offset = 0
+            while (offset < pcm.size) {
+                if (gen != generation || released) return false
+                val n = minOf(8192, pcm.size - offset)
+                val written = track.write(pcm, offset, n, AudioTrack.WRITE_BLOCKING)
+                if (written < 0) {
+                    Log.d(TAG, "AudioTrack write error: $written")
+                    notifyErrorOnce("playback: write $written")
+                    return false
                 }
+                offset += written
             }
-            mp.setOnCompletionListener {
-                completed = true
-                latch.countDown()
+            // Drain: wait until the playhead has passed every frame we
+            // wrote (deadline-capped in case a device's head position
+            // never advances — then the elapsed duration is the truth).
+            val totalFrames = pcm.size / 2
+            val deadline = System.currentTimeMillis() +
+                (totalFrames * 1000L / rate) + 1500
+            while (track.playbackHeadPosition < totalFrames) {
+                if (gen != generation || released) return false
+                if (System.currentTimeMillis() > deadline) break
+                Thread.sleep(40)
             }
-            mp.setOnErrorListener { _, _, _ ->
-                latch.countDown()
-                true
-            }
-            mp.prepareAsync()
-            // Wait for completion, but bail out promptly when stopAll()
-            // bumps the generation (stopAll also counts the latch down).
-            while (true) {
-                if (latch.await(150, TimeUnit.MILLISECONDS)) break
-                if (gen != generation || released) break
-            }
-            return completed && gen == generation
+            return gen == generation && !released
         } catch (e: Exception) {
             Log.d(TAG, "playback error: ${e.javaClass.simpleName}: ${e.message}")
+            notifyErrorOnce("playback: ${e.javaClass.simpleName}")
             return false
         } finally {
             try {
-                mp.release()
+                track?.stop()
             } catch (_: Exception) {
             }
-            if (currentPlayer == mp) currentPlayer = null
-            if (playLatch == latch) playLatch = null
+            try {
+                track?.release()
+            } catch (_: Exception) {
+            }
+            if (currentTrack == track) currentTrack = null
         }
     }
 

@@ -292,14 +292,14 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
     private fun googleLang(): String =
         if (Prefs.edgeVoice.startsWith("hi")) "hi" else "ur"
 
-    /** Split into <=180-char chunks at word boundaries (endpoint limit). */
+    /** Split into <=150-char chunks at word boundaries (endpoint limit). */
     private fun splitForGoogle(text: String): List<String> {
-        if (text.length <= 180) return listOf(text)
+        if (text.length <= 150) return listOf(text)
         val out = mutableListOf<String>()
         var rest = text
-        while (rest.length > 180) {
-            var cut = rest.lastIndexOf(' ', 180)
-            if (cut < 60) cut = 180
+        while (rest.length > 150) {
+            var cut = rest.lastIndexOf(' ', 150)
+            if (cut < 60) cut = 150
             out.add(rest.substring(0, cut).trim())
             rest = rest.substring(cut).trim()
         }

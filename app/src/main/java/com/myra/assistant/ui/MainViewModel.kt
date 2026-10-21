@@ -357,7 +357,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         voiceSpeaker = if (Prefs.transcriptVoiceEnabled) {
             try {
                 if (Prefs.voiceEngine == "EDGE") EdgeTtsSpeaker(getApplication())
-                else GeminiTtsSpeaker(getApplication())
+                else GeminiTtsSpeaker(getApplication()).also { sp ->
+                    // Temporary debug surface (Fazil's request): the
+                    // speaker reports its first playing segment and its
+                    // first failure (with the HTTP code) — toasted once
+                    // per session so a silent voice is diagnosable.
+                    sp.onDebugEvent = { msg ->
+                        if (gen == sessionGen) postToast(msg)
+                    }
+                }
             } catch (_: Exception) {
                 null
             }
