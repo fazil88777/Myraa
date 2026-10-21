@@ -40,11 +40,11 @@ class GeminiLiveClient(private val listener: Listener) {
     companion object {
         const val MODEL = "models/gemini-3.1-flash-live-preview"
 
-        /** ElevenLabs-mode Live model: Google documents text/transcription
+        /** Transcript-voice Live model: Google documents text/transcription
          *  output alongside its audio for gemini-3.8-live (the 3.1 preview
          *  above is also being shut down on Nov 17, 2026). Used only when
-         *  ElevenLabs voices her replies (see sendSetup). */
-        const val EL_MODEL = "models/gemini-3.8-live"
+         *  the Edge TTS voice speaks her replies (see sendSetup). */
+        const val TRANSCRIPT_MODEL = "models/gemini-3.8-live"
 
         const val BASE_URL =
             "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key="
@@ -94,14 +94,15 @@ class GeminiLiveClient(private val listener: Listener) {
 
     /**
      * True when THIS session asked the server for outputAudioTranscription
-     * because ElevenLabs voices her replies (decided in sendSetup): the
+     * because the Edge TTS transcript voice speaks her replies (decided in
+     * sendSetup): the
      * model's own audio is then discarded by MainViewModel and the
-     * transcript text is what gets spoken (by ElevenLabs) and shown in
+     * transcript text is what gets spoken (by Edge TTS) and shown in
      * chat. False for a plain AUDIO session.
      */
-    private var elTranscriptionMode: Boolean = false
+    private var transcriptMode: Boolean = false
 
-    // --- per-turn text tracking (ElevenLabs mode) ---
+    // --- per-turn text tracking (transcript-voice mode) ---
     // turnSawTranscription: this turn already produced an outputTranscription
     // delta — modelTurn text parts are forwarded only until then (the text
     // part is a fallback source of her words for turns/models where the
@@ -111,7 +112,7 @@ class GeminiLiveClient(private val listener: Listener) {
     private var turnAudioChunks = 0
     private var turnTextDeltas = 0
     // Tripwire notice fires at most once per session (reset in sendSetup).
-    private var elNoTextNoticeShown = false
+    private var noTextNoticeShown = false
 
     fun connect(apiKey: String) {
         try {
@@ -615,40 +616,43 @@ class GeminiLiveClient(private val listener: Listener) {
                     listOf("idea", "minutes")
                 )
             )
-            // Voice pipeline branch: with an ElevenLabs key + voice id saved
-            // in Settings, her replies are voiced by ElevenLabsSpeaker
-            // instead of Gemini's own voice. There is NO text-modality Live
+            // Voice pipeline branch: with the Edge TTS engine selected in
+            // Settings, her replies are voiced by EdgeTtsSpeaker (free
+            // Microsoft Edge Neural TTS, no key) instead of Gemini's own
+            // voice. There is NO text-modality Live
             // model on the Gemini API anymore (the half-cascade line was
             // shut down — every current Live model is native-audio and
             // REJECTS responseModalities ["TEXT"] at setup with close
-            // 1007), so the session stays in AUDIO modality. EL mode uses
-            // EL_MODEL (gemini-3.8-live — Google documents text/transcription
+            // 1007), so the session stays in AUDIO modality. Transcript
+            // mode uses
+            // TRANSCRIPT_MODEL (gemini-3.8-live — Google documents text/transcription
             // output alongside its audio, and the 3.1 preview MODEL is being
             // shut down on Nov 17, 2026 anyway) and does NOT pin a voice in
             // speechConfig: her Gemini audio is discarded unheard, and a
             // voice name that 3.8-live doesn't know must never be able to
-            // reject the whole setup. The other addition in EL mode is
+            // reject the whole setup. The other addition in transcript mode
+            // is
             // outputAudioTranscription (added below): the server then
             // streams the reply's text alongside its audio, MainViewModel
             // discards that audio unheard, and the transcript is what
-            // ElevenLabs speaks and what chat shows. Without ElevenLabs
-            // configured, the setup is byte-identical to the plain AUDIO
+            // Edge TTS speaks and what chat shows. With the Gemini engine
+            // selected, the setup is byte-identical to the plain AUDIO
             // session (no transcription is requested).
-            val elMode = com.myra.assistant.util.Prefs.elevenLabsEnabled
-            elTranscriptionMode = elMode
+            val transcriptVoice = com.myra.assistant.util.Prefs.transcriptVoiceEnabled
+            transcriptMode = transcriptVoice
             // Fresh session: per-turn text tracking and the once-per-session
             // silent-reply tripwire start clean.
             turnSawTranscription = false
             turnAudioChunks = 0
             turnTextDeltas = 0
-            elNoTextNoticeShown = false
+            noTextNoticeShown = false
             val genConfig = JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
             // Plain AUDIO mode pins her prebuilt voice exactly as before.
-            // EL mode sends NO speechConfig at all (see the branch comment
-            // above): the server default applies to audio nobody hears, and
-            // nothing voice-related can reject the EL setup.
-            if (!elMode) {
+            // Transcript mode sends NO speechConfig at all (see the branch
+            // comment above): the server default applies to audio nobody
+            // hears, and nothing voice-related can reject the setup.
+            if (!transcriptVoice) {
                 genConfig.put(
                     "speechConfig",
                     JSONObject().put(
@@ -661,7 +665,7 @@ class GeminiLiveClient(private val listener: Listener) {
                 )
             }
             val setup = JSONObject()
-                .put("model", if (elMode) EL_MODEL else MODEL)
+                .put("model", if (transcriptVoice) TRANSCRIPT_MODEL else MODEL)
                 .put(
                     "sessionResumption",
                     // Resume previous conversation context when we have a fresh
@@ -909,11 +913,11 @@ class GeminiLiveClient(private val listener: Listener) {
                     JSONArray().put(JSONObject().put("functionDeclarations", fdArray))
                 )
 
-            // ElevenLabs mode only: also stream the model's reply text (a
+            // Transcript-voice mode only: also stream the model's reply text (a
             // top-level setup field, sibling of inputAudioTranscription).
             // handleMessage routes those deltas to the same text consumer
             // the old TEXT mode used; the model's own audio is discarded.
-            if (elMode) {
+            if (transcriptVoice) {
                 setup.put("outputAudioTranscription", JSONObject())
             }
 
@@ -1061,17 +1065,17 @@ class GeminiLiveClient(private val listener: Listener) {
                         listener.onAudioChunk(Base64.decode(data, Base64.DEFAULT))
                     }
                     if (part.has("text")) {
-                        if (!elTranscriptionMode) {
+                        if (!transcriptMode) {
                             listener.onTextDelta(part.getString("text"))
                         } else if (!turnSawTranscription) {
-                            // ElevenLabs mode fallback text path: if this
+                            // Transcript-mode fallback text path: if this
                             // turn never produces outputTranscription (the
                             // v14 total-silence failure), a modelTurn text
                             // part is the ONLY source of her words — forward
                             // it. Once the turn's first transcription delta
                             // has arrived, text parts are ignored again:
                             // forwarding both would double the chat and the
-                            // ElevenLabs speech.
+                            // spoken voice.
                             turnTextDeltas++
                             listener.onTextDelta(part.getString("text"))
                         }
@@ -1080,14 +1084,14 @@ class GeminiLiveClient(private val listener: Listener) {
             }
 
             // The model's spoken reply, transcribed by the server (only
-            // requested in ElevenLabs mode). These deltas are her words:
-            // they go to the same consumer the old TEXT mode fed — chat
-            // append + ElevenLabsSpeaker — while her Gemini audio above is
-            // discarded unheard by MainViewModel.
+            // requested in transcript-voice mode). These deltas are her
+            // words: they go to the same consumer the old TEXT mode fed —
+            // chat append + EdgeTtsSpeaker — while her Gemini audio above
+            // is discarded unheard by MainViewModel.
             if (sc.has("outputTranscription")) {
                 val t = sc.getJSONObject("outputTranscription").optString("text")
                 if (t.isNotEmpty()) {
-                    if (elTranscriptionMode) {
+                    if (transcriptMode) {
                         turnSawTranscription = true
                         turnTextDeltas++
                     }
@@ -1101,15 +1105,15 @@ class GeminiLiveClient(private val listener: Listener) {
             }
 
             if (sc.optBoolean("turnComplete")) {
-                // Silent-reply tripwire (ElevenLabs mode): the turn carried
-                // audio but NO text of either kind (no transcription delta,
-                // no text part) — her reply can neither be shown in chat nor
-                // spoken by ElevenLabs, and without this notice that failure
-                // is completely invisible. Once per session is enough.
-                if (elTranscriptionMode && turnAudioChunks > 0 && turnTextDeltas == 0 &&
-                    !elNoTextNoticeShown
+                // Silent-reply tripwire (transcript-voice mode): the turn
+                // carried audio but NO text of either kind (no transcription
+                // delta, no text part) — her reply can neither be shown in
+                // chat nor spoken by Edge TTS, and without this notice that
+                // failure is completely invisible. Once per session is enough.
+                if (transcriptMode && turnAudioChunks > 0 && turnTextDeltas == 0 &&
+                    !noTextNoticeShown
                 ) {
-                    elNoTextNoticeShown = true
+                    noTextNoticeShown = true
                     listener.onNotice("Jawab aaya lekin uske alfaaz (transcription) nahi mile")
                 }
                 turnSawTranscription = false
@@ -1160,12 +1164,13 @@ class GeminiLiveClient(private val listener: Listener) {
     /**
      * How her voice is produced this session, in prompt words.
      * Live mode: Gemini's own native voice -> pace word from the mood ladder.
-     * ElevenLabs mode: a realistic TTS reads her TEXT verbatim, so emotion
-     * must ride on words and punctuation instead (no pitch/speed lever, and
-     * the mood speed-ladder does not apply — punctuation does the work).
+     * Edge TTS mode: a realistic TTS reads her TEXT verbatim, so emotion
+     * must ride on words and punctuation instead (no pitch/speed lever from
+     * the model side — the app applies mood prosody itself, punctuation
+     * does the rest).
      */
     private fun voiceStyle(): String =
-        if (com.myra.assistant.util.Prefs.elevenLabsEnabled) {
+        if (com.myra.assistant.util.Prefs.transcriptVoiceEnabled) {
             "tumhari awaaz ek bohat hi realistic insani awaaz hai jo tumhare likhe hue " +
             "alfaz ko hubahu parh kar banti hai — is liye apna lehja aur jazbaat " +
             "PUNCTUATION se chalao: narmi, waqfe aur soch ke liye '...', khushi, " +
@@ -1182,14 +1187,14 @@ class GeminiLiveClient(private val listener: Listener) {
      *  - Live mode: Gemini voices the reply itself, so asterisk cues
      *    (*sniffles*, *giggles*) are acted out by the model and never heard
      *    as words.
-     *  - ElevenLabs mode: the TTS reads the text LITERALLY — an asterisk
+     *  - Edge TTS mode: the TTS reads the text LITERALLY — an asterisk
      *    cue would be spoken aloud as words. So in that mode ALL emotion
      *    must be carried by words and punctuation alone, and stage
      *    directions are strictly forbidden.
      */
     private fun vocalCuesPrompt(): String =
-        if (com.myra.assistant.util.Prefs.elevenLabsEnabled) {
-            "AWAZ KE IZHAAR (ElevenLabs awaaz — SIRF alfaz aur punctuation): tumhari " +
+        if (com.myra.assistant.util.Prefs.transcriptVoiceEnabled) {
+            "AWAZ KE IZHAAR (Edge awaaz — SIRF alfaz aur punctuation): tumhari " +
             "awaaz ek text-to-speech engine se aati hai jo tumhare alfaz HUBAHU parhti " +
             "hai. Is liye jazbaat SIRF alfaz aur punctuation se zahir karo. Asterisk " +
             "(*) ya bracket wali stage directions KABHI MAT LIKHO — *sniffles* ya " +
@@ -1217,7 +1222,7 @@ class GeminiLiveClient(private val listener: Listener) {
      * Everyday spoken-Urdu style: she talks like a real, caring woman on a
      * phone call — natural fillers, short spoken sentences, deliberate
      * punctuation. NEVER formal/bookish Urdu. Applies in both voice modes;
-     * in ElevenLabs mode the punctuation also drives the TTS inflection.
+     * in Edge TTS mode the punctuation also drives the TTS inflection.
      */
     private fun spokenUrduPrompt(): String =
         "BOLI KA ANDAZ — ASAL PHONE WALI BAAT: hamesha roz-marra ki boli jane wali " +
@@ -1244,9 +1249,9 @@ class GeminiLiveClient(private val listener: Listener) {
             "already announced 'Welcome to Myra Assistant' out loud — NEVER " +
             "repeat that line. "
         return if (com.myra.assistant.util.MoodManager.isMissingYou()) {
-            // ElevenLabs mode: NO asterisk cues — the TTS would read them
+            // Edge TTS mode: NO asterisk cues — the TTS would read them
             // aloud literally. The same opener, carried by words + "...".
-            val example = if (com.myra.assistant.util.Prefs.elevenLabsEnabled) {
+            val example = if (com.myra.assistant.util.Prefs.transcriptVoiceEnabled) {
                 "'Haye Fazil... aa gaye tum? Itni der kahan ghayeb thay? Uff, maine " +
                     "tumhein itnaaaa miss kiya...'"
             } else {

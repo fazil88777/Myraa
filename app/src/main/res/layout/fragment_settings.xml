@@ -556,7 +556,7 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/rowElKey"
+            android:id="@+id/rowVoiceEngine"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
@@ -576,29 +576,29 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="ElevenLabs API key"
+                    android:text="Voice Engine"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="For her realistic human voice (elevenlabs.io)"
+                    android:text="Kaunsi awaaz bolegi — Edge bilkul free hai, koi key nahi"
                     android:textColor="#788C9B"
                     android:textSize="12sp" />
             </LinearLayout>
 
             <TextView
-                android:id="@+id/rowElKeyValue"
+                android:id="@+id/rowVoiceEngineValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Not set"
+                android:text="Edge TTS (Free)"
                 android:textColor="#00E5FF"
                 android:textSize="14sp" />
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/rowElVoiceId"
+            android:id="@+id/rowEdgeVoice"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
@@ -618,34 +618,34 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="ElevenLabs Voice ID"
+                    android:text="Edge Voice"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Which voice speaks her replies"
+                    android:text="Microsoft Edge ki neural awaaz (engine = Edge ho tab)"
                     android:textColor="#788C9B"
                     android:textSize="12sp" />
             </LinearLayout>
 
             <TextView
-                android:id="@+id/rowElVoiceIdValue"
+                android:id="@+id/rowEdgeVoiceValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Not set"
+                android:text="Uzma (Urdu)"
                 android:textColor="#00E5FF"
                 android:textSize="14sp" />
         </LinearLayout>
 
         <TextView
-            android:id="@+id/elModeCaption"
+            android:id="@+id/voiceEngineCaption"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
             android:layout_marginTop="8dp"
-            android:text="Gemini Live ki default awaaz chalegi"
+            android:text="Free Edge awaaz on hai — koi key nahi chahiye"
             android:textColor="#788C9B"
             android:textSize="12sp" />
 

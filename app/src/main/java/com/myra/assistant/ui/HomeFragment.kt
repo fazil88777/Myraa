@@ -133,7 +133,7 @@ class HomeFragment : Fragment() {
             }
         }
         vm.toastEvent.observe(viewLifecycleOwner) { ev ->
-            // One-shot ViewModel notices: the ElevenLabs AUDIO fallback and
+            // One-shot ViewModel notices: voice-engine failure notices and
             // the final reconnect give-up reason (raw server words included).
             if (ev != null && ev.id != lastToastId) {
                 lastToastId = ev.id

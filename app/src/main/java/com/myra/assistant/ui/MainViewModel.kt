@@ -19,7 +19,7 @@ import com.myra.assistant.service.BorderOverlay
 import com.myra.assistant.service.FloatingOrbService
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.Prefs
-import com.myra.assistant.voice.ElevenLabsSpeaker
+import com.myra.assistant.voice.EdgeTtsSpeaker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,13 +52,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _toastEvent.postValue(ToastEvent(++toastSeq, message))
     }
 
-    /** ElevenLabsSpeaker synthesis failure (HTTP code, -1 = network/other):
-     *  surface it ONCE per session so a bad key scope / Voice ID / quota is
-     *  visible on screen instead of silently dropped segments. */
-    private fun notifyElError(code: Int) {
-        if (elErrorToastShown) return
-        elErrorToastShown = true
-        postToast("ElevenLabs awaaz fail (HTTP $code) — key / Voice ID check karo")
+    /** EdgeTtsSpeaker synthesis failure (HTTP code, -1 = network/other):
+     *  surfaced ONCE per session so a dead Edge service / broken network is
+     *  visible on screen instead of silently dropped segments. The exact
+     *  code is logged by the speaker; the toast stays simple for the user. */
+    private fun notifyVoiceError(code: Int) {
+        if (voiceErrorToastShown) return
+        voiceErrorToastShown = true
+        postToast("Edge awaaz fail — net check karke dobara try karo")
     }
 
     private val _isConnected = MutableLiveData(false)
@@ -91,12 +92,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // finishes so the model doesn't hear it as user speech.
     private var speakWelcomeOnConnect = false
     private var tts: TextToSpeech? = null
-    // ElevenLabs voice for THIS session (null in Gemini Live audio mode).
-    // Created fresh in beginNewSession when key + voice id are saved in
-    // Settings; the Live session stays in AUDIO mode but asks for output
-    // transcription, and this speaker voices the reply's transcript text
-    // sentence by sentence while Gemini's own audio is discarded.
-    private var elSpeaker: ElevenLabsSpeaker? = null
+    // Edge TTS voice for THIS session (null in Gemini Live audio mode).
+    // Created fresh in beginNewSession when the Voice Engine is EDGE; the
+    // Live session stays in AUDIO mode but asks for output transcription,
+    // and this speaker voices the reply's transcript text sentence by
+    // sentence while Gemini's own audio is discarded.
+    private var voiceSpeaker: EdgeTtsSpeaker? = null
     // Silence-fix state: auto-reconnect when the socket dies, and detect a
     // "half-dead" socket (mic hears the user, but no transcription ever arrives).
     private var manualStop = false
@@ -104,7 +105,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var reconnectAttempts = 0
     private var sessionGen = 0
 
-    // --- honest setup-failure state (ElevenLabs-mode fix) ---
+    // --- honest setup-failure state ---
     // A connect attempt is in flight (setup sent, not yet resolved).
     private var sessionConnecting = false
     // The current attempt reached setupComplete (the session truly lived).
@@ -117,12 +118,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var lastDeathInfo: String? = null
     // The give-up toast fires once per failure chain.
     private var giveUpToastShown = false
-    // ElevenLabs synthesis-failure toast fires ONCE per session; the reply
+    // Edge synthesis-failure toast fires ONCE per session; the reply
     // segments and the greeting's speakOnce share this flag, so whichever
-    // path fails first shows the real HTTP code exactly once. Reset every
+    // path fails first shows the failure exactly once. Reset every
     // beginNewSession, next to the speaker's creation.
     @Volatile
-    private var elErrorToastShown = false
+    private var voiceErrorToastShown = false
     // Coroutine scope bound to the CURRENT session: cancelled on every teardown
     // so a tool call from the dying session can never answer the new socket.
     private var sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -365,14 +366,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _statusText.postValue("Connecting...")
         val engine = AudioEngine()
         audio = engine
-        // ElevenLabs mode is decided HERE, once, at session start (the
+        // The voice engine is decided HERE, once, at session start (the
         // client's setup reads the same flag to add output transcription)
         // — changing the key in Settings mid-session never switches voices.
-        elErrorToastShown = false
-        elSpeaker = if (Prefs.elevenLabsEnabled) {
+        voiceErrorToastShown = false
+        voiceSpeaker = if (Prefs.transcriptVoiceEnabled) {
             try {
-                ElevenLabsSpeaker(getApplication()).also { sp ->
-                    sp.onError = { code -> notifyElError(code) }
+                EdgeTtsSpeaker(getApplication()).also { sp ->
+                    sp.onError = { code -> notifyVoiceError(code) }
                 }
             } catch (_: Exception) {
                 null
@@ -439,12 +440,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 modelRespondedThisSession = true
                 // The session proved itself healthy — reconnect failures stop counting.
                 reconnectAttempts = 0
-                // ElevenLabs mode: Gemini's own audio is NEVER played — her
-                // words arrive as output transcription and ElevenLabs speaks
+                // Edge TTS mode: Gemini's own audio is NEVER played — her
+                // words arrive as output transcription and Edge TTS speaks
                 // them instead. Only the activity bookkeeping above runs,
                 // exactly as in audio mode, so the watchdog and the
                 // reconnect logic can't tell the difference.
-                if (elSpeaker == null) {
+                if (voiceSpeaker == null) {
                     try {
                         audio?.playPcm24k(pcm24k)
                     } catch (_: Exception) {
@@ -459,11 +460,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 modelRespondedThisSession = true
                 reconnectAttempts = 0
                 appendModelDelta(text)
-                // ElevenLabs mode: this text is the output transcription of
+                // Edge TTS mode: this text is the output transcription of
                 // her spoken reply — stream it to the TTS speaker, which
                 // cuts it into sentences and speaks them in order.
                 try {
-                    elSpeaker?.enqueueDelta(text)
+                    voiceSpeaker?.enqueueDelta(text)
                 } catch (_: Exception) {
                 }
             }
@@ -479,10 +480,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     return
                 }
                 showInputTranscription(text)
-                // Barge-in: the user started speaking — cut ElevenLabs
+                // Barge-in: the user started speaking — cut Edge TTS
                 // playback off immediately, like native audio ducking.
                 try {
-                    elSpeaker?.stopAll()
+                    voiceSpeaker?.stopAll()
                 } catch (_: Exception) {
                 }
             }
@@ -495,10 +496,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 toolTurnClosed = true
                 turnHasModelMessage = false
                 pendingInputMsgIndex = -1
-                // ElevenLabs mode: speak the reply's trailing partial
+                // Edge TTS mode: speak the reply's trailing partial
                 // sentence (no terminator ever arrived for it).
                 try {
-                    elSpeaker?.flushTurn()
+                    voiceSpeaker?.flushTurn()
                 } catch (_: Exception) {
                 }
             }
@@ -548,7 +549,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (_: Exception) {
                 }
                 try {
-                    elSpeaker?.stopAll()
+                    voiceSpeaker?.stopAll()
                 } catch (_: Exception) {
                 }
             }
@@ -594,7 +595,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Single funnel for "the live session just died" (socket closed OR a
      * server/setup error): records the honest reason (the client's friendly
      * line already carries the RAW close code + server words) and hands
-     * over to the normal reconnect policy. ElevenLabs mode can no longer
+     * over to the normal reconnect policy. The transcript voice can no longer
      * kill a session — it rides on the same AUDIO setup as always, so
      * there is no modality fallback left to run here.
      */
@@ -668,12 +669,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Speaks "Welcome to Myra Assistant" (guaranteed to play — the AI model
      * doesn't always volunteer a greeting), then runs [after] once the
      * welcome has finished so the mic never picks it up as user speech.
-     * ElevenLabs mode: the line is spoken in her ElevenLabs voice; if that
+     * Edge TTS mode: the line is spoken in her Edge voice; if that
      * fails for any reason (bad key, quota, network), the phone's own TTS
      * below takes over so the greeting is never lost.
      */
     private fun speakWelcomeThen(after: () -> Unit) {
-        val speaker = elSpeaker
+        val speaker = voiceSpeaker
         if (speaker == null) {
             speakWelcomeViaTts(after)
             return
@@ -698,7 +699,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             )
-            // Safety net: a hung ElevenLabs request must never hold the mic
+            // Safety net: a hung Edge TTS request must never hold the mic
             // hostage — fall back to the phone TTS after a few seconds.
             ui.postDelayed({
                 if (settled.compareAndSet(false, true)) {
@@ -849,10 +850,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Exception) {
         }
         try {
-            elSpeaker?.release()
+            voiceSpeaker?.release()
         } catch (_: Exception) {
         }
-        elSpeaker = null
+        voiceSpeaker = null
         try {
             sessionScope.cancel()
         } catch (_: Exception) {
@@ -891,10 +892,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Exception) {
         }
         try {
-            elSpeaker?.release()
+            voiceSpeaker?.release()
         } catch (_: Exception) {
         }
-        elSpeaker = null
+        voiceSpeaker = null
         try {
             client?.disconnect()
         } catch (_: Exception) {

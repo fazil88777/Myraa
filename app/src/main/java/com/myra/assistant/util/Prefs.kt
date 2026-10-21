@@ -48,24 +48,26 @@ object Prefs {
         get() = str("api_key", "")
         set(value) = putStr("api_key", value)
 
-    /** ElevenLabs API key (Settings > KEYS & DATA). Blank = Gemini Live voice. */
-    var elevenLabsKey: String
-        get() = str("elevenlabs_key", "")
-        set(value) = putStr("elevenlabs_key", value)
+    /** Voice engine: "EDGE" (Microsoft Edge Neural TTS — free, no key) or
+     *  "GEMINI" (Gemini Live's own native voice). Settings > KEYS & DATA. */
+    var voiceEngine: String
+        get() = str("voice_engine", "EDGE")
+        set(value) = putStr("voice_engine", value)
 
-    /** ElevenLabs Voice ID — which ElevenLabs voice speaks her replies. */
-    var elevenLabsVoiceId: String
-        get() = str("elevenlabs_voice_id", "")
-        set(value) = putStr("elevenlabs_voice_id", value)
+    /** Edge Neural voice that speaks her replies in EDGE engine mode. */
+    var edgeVoice: String
+        get() = str("edge_voice", "ur-PK-UzmaNeural")
+        set(value) = putStr("edge_voice", value)
 
     /**
-     * True when BOTH ElevenLabs fields are set: the Live session then runs
-     * in TEXT mode and her replies are spoken by ElevenLabs instead of the
-     * Gemini Live native voice. Decided once at session start — never
-     * switched mid-session.
+     * True when the Edge transcript voice is selected: the Live session
+     * then asks for output transcription, Gemini's own audio is discarded
+     * unheard, and the reply's transcript text is spoken by Edge Neural
+     * TTS instead. Decided once at session start — never switched
+     * mid-session. False = Gemini Live's native voice speaks.
      */
-    val elevenLabsEnabled: Boolean
-        get() = elevenLabsKey.isNotBlank() && elevenLabsVoiceId.isNotBlank()
+    val transcriptVoiceEnabled: Boolean
+        get() = voiceEngine == "EDGE"
 
     var orbEnabled: Boolean
         get() = bool("orb_enabled", true)
