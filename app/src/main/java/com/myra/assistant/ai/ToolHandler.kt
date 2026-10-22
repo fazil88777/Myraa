@@ -692,7 +692,7 @@ object ToolHandler {
         if (action.isEmpty()) return "ERROR: action khaali hai — laptop par kya karna hai?"
         val payload = JSONObject()
         payload.put("action", action)
-        for (k in listOf("path", "name", "new_name", "text", "url", "app", "key")) {
+        for (k in listOf("path", "name", "new_name", "text", "url", "app", "key", "query", "folder")) {
             val v = args.optString(k).trim()
             if (v.isNotEmpty()) payload.put(k, v)
         }

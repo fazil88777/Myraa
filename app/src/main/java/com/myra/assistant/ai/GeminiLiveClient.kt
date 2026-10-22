@@ -715,7 +715,7 @@ class GeminiLiveClient(private val listener: Listener) {
                             "capture_screen the laptop's screen picture is shown to you " +
                             "in the session — describe what you see naturally.",
                     obj(
-                        "action" to strProp("One of: shutdown, restart, sleep, volume_up, volume_down, mute, create_folder, delete_file, rename_file, list_directory, open_browser, open_url, scroll_up, scroll_down, switch_tab, close_tab, type_text, press_key, mouse_click, capture_screen, open_app"),
+                        "action" to strProp("One of: shutdown, restart, sleep, volume_up, volume_down, mute, create_folder, delete_file, rename_file, list_directory, open_browser, open_url, search_google, search_youtube, open_folder, scroll_up, scroll_down, switch_tab, close_tab, type_text, press_key, mouse_click, capture_screen, open_app"),
                         "path" to strProp("Optional: folder/file path or place — 'desktop', 'documents', 'downloads', or a full path like 'C:\\Users\\Fazil\\Desktop\\notes.txt'"),
                         "name" to strProp("Optional: folder name for create_folder, e.g. 'Test'"),
                         "new_name" to strProp("Optional: new name for rename_file"),
@@ -723,6 +723,8 @@ class GeminiLiveClient(private val listener: Listener) {
                         "url" to strProp("Optional: website URL for open_url, e.g. 'youtube.com'"),
                         "app" to strProp("Optional: app name for open_app, e.g. 'chrome', 'vscode', 'vlc', 'notepad', 'premiere'"),
                         "key" to strProp("Optional: key for press_key, e.g. 'enter', 'esc', 'ctrl+s', 'alt+tab'"),
+                        "query" to strProp("Optional: search words for search_google / search_youtube, e.g. 'funny cats'"),
+                        "folder" to strProp("Optional: folder to open for open_folder — 'desktop', 'documents' or 'downloads'"),
                         "amount" to intProp("Optional: steps for volume/scroll (default 5)"),
                         "x" to intProp("Optional: mouse_click horizontal pixel position"),
                         "y" to intProp("Optional: mouse_click vertical pixel position")
@@ -901,6 +903,11 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "set nahi hai, to use pyaar se kaho Settings mein KEYS & DATA ke neeche " +
                                         "Laptop Pairing Code dal de — laptop wali script mein bhi wohi code " +
                                         "hona chahiye. " +
+                                        "YouTube ya Google par kuch search karna ho to search_youtube / " +
+                                        "search_google use karo, query ke saath — seedha uske Chrome " +
+                                        "(apne profile) mein khule ga. Downloads, Desktop ya Documents " +
+                                        "folder kholna ho to open_folder use karo (folder: desktop, " +
+                                        "documents ya downloads). " +
                                         "PURANE KAAM KA ZIKR: greeting ke foran baad, agar upar ADHOORE KAAM " +
                                         "mein koi pending task hai to us mein se SIRF EK ka zikr naturally " +
                                         "karo, jaise 'acha suno, tum ne kaha tha video generate karni hai " +

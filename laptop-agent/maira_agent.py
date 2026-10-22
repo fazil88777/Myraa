@@ -25,6 +25,13 @@ topic hamesha durust banta hai. Asal code sirf message ke payload ke
 'code' field mein jata hai, jise agent har command par bilkul waisa
 ka waisa milata hai. Phone ki taraf bhi bilkul yahi hash banta hai
 (util/LaptopLink.kt).
+
+Chrome hamesha usi ke apne profile se khulta hai: uske Chrome
+profile ka naam "UR Chrome" hai jo asal mein "Profile 2" hai, is
+liye har dafa chrome.exe --profile-directory="Profile 2" se launch
+hota hai — na profile-chunne wali screen aati hai, na Edge khulta
+hai. Downloads/Desktop/Documents ke path kabhi hardcoded nahi hote:
+hamesha os.path.expanduser("~") se bante hain (user_dir).
 """
 
 import base64
@@ -36,6 +43,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 import webbrowser
 from io import BytesIO
 
@@ -64,10 +72,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "maira_config.json")
 HOME = os.path.expanduser("~")
 
+def user_dir(key):
+    """Windows user folder ka asal path — kabhi hardcoded nahi:
+    'desktop' -> ~/Desktop, 'documents' -> ~/Documents,
+    'downloads' -> ~/Downloads (os.path.expanduser("~") se)."""
+    names = {"desktop": "Desktop", "documents": "Documents",
+             "downloads": "Downloads"}
+    return os.path.join(os.path.expanduser("~"), names[key])
+
+
 NAMED_DIRS = {
-    "desktop": os.path.join(HOME, "Desktop"),
-    "documents": os.path.join(HOME, "Documents"),
-    "downloads": os.path.join(HOME, "Downloads"),
+    "desktop": user_dir("desktop"),
+    "documents": user_dir("documents"),
+    "downloads": user_dir("downloads"),
 }
 
 PAIRING_CODE = ""
@@ -275,25 +292,55 @@ def h_list_directory(client, msg):
     return True, ("%s ki list:\n" % folder) + "\n".join(lines)
 
 
-def _chrome_path():
+# ------------------------------------------------------------- chrome
+# Uske Chrome profile ka naam "UR Chrome" hai — asal directory
+# "Profile 2". Hamesha chrome.exe ko --profile-directory="Profile 2"
+# ke saath launch karo: profile-chunne wali screen kabhi nahi aati,
+# aur Edge / webbrowser.open() kabhi istemal nahi hota.
+CHROME_PROFILE_DIR = "Profile 2"
+_chrome_exe_cache = None
+
+
+def find_chrome():
+    """chrome.exe dhoondo — pehle mashhoor jaghein, phir PATH.
+    Result cache ho jata hai taake har command par disk na dhoondna pare."""
+    global _chrome_exe_cache
+    if _chrome_exe_cache is not None:
+        return _chrome_exe_cache or None
     cands = [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Google\Chrome\Application\chrome.exe"),
+        os.path.join(os.path.expanduser("~"),
+                     r"AppData\Local\Google\Chrome\Application\chrome.exe"),
     ]
     for c in cands:
         if c and os.path.exists(c):
+            _chrome_exe_cache = c
             return c
-    return None
+    found = shutil.which("chrome")
+    _chrome_exe_cache = found or ""
+    return found
+
+
+def launch_chrome(url=None):
+    """Chrome ko uske 'Profile 2' (UR Chrome) profile se kholo —
+    url ho to seedha wahi page. chrome.exe na mile to False."""
+    exe = find_chrome()
+    if not exe:
+        log("chrome.exe nahi mila — Chrome launch nahi ho saka.")
+        return False
+    args = [exe, "--profile-directory=%s" % CHROME_PROFILE_DIR]
+    if url:
+        args.append(url)
+    subprocess.Popen(args)
+    return True
 
 
 def h_open_browser(client, msg):
-    chrome = _chrome_path()
-    if chrome:
-        subprocess.Popen([chrome])
-        return True, "Chrome khol diya."
-    webbrowser.open("about:blank")
-    return True, "Default browser khol diya."
+    if launch_chrome():
+        return True, "Chrome khol diya (UR Chrome profile)."
+    webbrowser.open("about:blank")  # aakhri sahara — sirf jab chrome.exe hi na mile
+    return True, "Chrome nahi mila — default browser khol diya."
 
 
 def h_open_url(client, msg):
@@ -302,8 +349,45 @@ def h_open_url(client, msg):
         return False, "URL nahi diya gaya."
     if not url.lower().startswith(("http://", "https://")):
         url = "https://" + url
-    webbrowser.open(url)
+    if launch_chrome(url):
+        return True, "Chrome mein khol diya: %s" % url
+    webbrowser.open(url)  # aakhri sahara — sirf jab chrome.exe hi na mile
     return True, "Khol diya: %s" % url
+
+
+def _search_query(msg):
+    return (msg.get("query") or msg.get("text") or "").strip()
+
+
+def h_search_google(client, msg):
+    q = _search_query(msg)
+    if not q:
+        return False, "Search ke liye query nahi di gayi."
+    url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(q)
+    if launch_chrome(url):
+        return True, "Google par search kar diya: %s" % q
+    webbrowser.open(url)
+    return True, "Google search khol diya: %s" % q
+
+
+def h_search_youtube(client, msg):
+    q = _search_query(msg)
+    if not q:
+        return False, "Search ke liye query nahi di gayi."
+    url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(q)
+    if launch_chrome(url):
+        return True, "YouTube par search kar diya: %s" % q
+    webbrowser.open(url)
+    return True, "YouTube search khol diya: %s" % q
+
+
+def h_open_folder(client, msg):
+    key = (msg.get("folder") or msg.get("path") or "desktop").strip().lower()
+    if key not in NAMED_DIRS:
+        return False, "Ye folder nahi khul sakta: %s (sirf desktop, documents, downloads)" % key
+    target = user_dir(key)
+    os.startfile(target)
+    return True, "%s folder khol diya: %s" % (key.capitalize(), target)
 
 
 def h_scroll_up(client, msg):
@@ -429,6 +513,14 @@ def h_open_app(client, msg):
     if not app:
         return False, "app ka naam nahi diya gaya."
     key = app.lower()
+    if key in NAMED_DIRS:
+        target = user_dir(key)
+        os.startfile(target)
+        return True, "%s folder khol diya: %s" % (key.capitalize(), target)
+    if key in ("chrome", "google chrome"):
+        if launch_chrome():
+            return True, "Chrome khol diya (UR Chrome profile)."
+        return False, "chrome.exe nahi mila — Chrome nahi khul saka."
     la = os.environ.get("LOCALAPPDATA", "")
     pf = r"C:\Program Files"
     pfx = r"C:\Program Files (x86)"
@@ -482,6 +574,9 @@ HANDLERS = {
     "list_directory": h_list_directory,
     "open_browser": h_open_browser,
     "open_url": h_open_url,
+    "search_google": h_search_google,
+    "search_youtube": h_search_youtube,
+    "open_folder": h_open_folder,
     "scroll_up": h_scroll_up,
     "scroll_down": h_scroll_down,
     "switch_tab": h_switch_tab,
