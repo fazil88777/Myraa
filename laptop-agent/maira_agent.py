@@ -4,7 +4,7 @@
 MYRA Laptop Agent — phone (MYRA app) se is Windows laptop ko control karta hai.
 
 Dependencies (run_maira.bat khud install kar deta hai):
-    pip install paho-mqtt pyautogui pygetwindow pillow
+    pip install paho-mqtt pyautogui pygetwindow pillow pyperclip
 
 Chalana:
     python maira_agent.py      (ya run_maira.bat double-click karo)
@@ -51,7 +51,7 @@ from io import BytesIO
 try:
     import paho.mqtt.client as mqtt
 except ImportError:
-    print("paho-mqtt nahi mila. Chalao: pip install paho-mqtt pyautogui pillow")
+    print("paho-mqtt nahi mila. Chalao: pip install paho-mqtt pyautogui pygetwindow pillow pyperclip")
     sys.exit(1)
 
 try:
@@ -604,28 +604,33 @@ def _truthy(v):
 
 
 def _paste_text(text):
-    """Unicode-safe type: clipboard (tkinter — stdlib) + Ctrl+V.
-    Urdu/emoji bhi chalta hai. Fail ho to ASCII typewrite fallback."""
+    """Unicode-safe type — teen layers, kabhi raise nahi karta:
+    1) pyperclip se clipboard par copy + Ctrl+V (Urdu/emoji bhi).
+    2) pyautogui.write — sirf ASCII ke liye theek hai.
+    3) fail — 'Typing error' log karke False.
+    NOTE: purana tareeqa tkinter (tk.Tk()) tha. Handlers paho ke
+    network callback ke andar chalte hain; wahan Tcl interpreter
+    banana/mitaana poore process ko hard-abort kar sakta tha —
+    agent 'Command: type_text' ke fauran baad band ho jata tha
+    aur try/except use pakar hi nahi sakta tha. Is liye tkinter
+    ab is file mein bilkul istemal nahi hota."""
     try:
-        import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
-        root.clipboard_clear()
-        root.clipboard_append(text)
-        root.update()
+        import pyperclip
+        pyperclip.copy(text)
+        time.sleep(0.15)
         pyautogui.hotkey("ctrl", "v")
-        root.destroy()
         return True
     except Exception:
         pass
     try:
-        pyautogui.typewrite(text, interval=0.02)  # sirf ASCII ke liye theek hai
+        pyautogui.write(text, interval=0.02)
         return True
-    except Exception:
+    except Exception as e:
+        log("Typing error: %s" % e)
         return False
 
 
-def h_type_text(client, msg):
+def _type_text_impl(client, msg):
     text = msg.get("text") or ""
     if not text:
         return False, "Likhnay ke liye text nahi diya gaya."
@@ -636,6 +641,16 @@ def h_type_text(client, msg):
             return True, "Likh kar Enter bhi daba diya (%d characters)." % len(text)
         return True, "Likh diya (%d characters)." % len(text)
     return False, "Text type nahi ho saka."
+
+
+def h_type_text(client, msg):
+    """type_text handler — kabhi raise nahi karta: typing ka koi bhi
+    error sirf log hota hai, agent chalta rehta hai."""
+    try:
+        return _type_text_impl(client, msg)
+    except Exception as e:
+        log("Typing error: %s" % e)
+        return False, "Text type nahi ho saka: %s" % e
 
 
 _KEY_ALIASES = {"esc": "esc", "escape": "esc", "enter": "enter", "return": "enter",
@@ -818,27 +833,30 @@ def on_message(client, userdata, message):
     except Exception:
         log("Samajh na aane wala message aaya — ignore.")
         return
-    if msg.get("code") != PAIRING_CODE:
-        log("Ghalat pairing code wala message ignore kiya.")
-        return
-    action = msg.get("action") or ""
-    msg_id = msg.get("id")
-    log("Command: %s" % action)
-    handler = HANDLERS.get(action)
-    if handler is None:
-        publish_result(client, msg_id, False, "Ye action agent nahi janta: %s" % action)
-        return
-    if action in NEEDS_GUI and pyautogui is None:
-        publish_result(client, msg_id, False, "pyautogui install nahi — ye kaam nahi ho sakta.")
-        return
     try:
-        ok, text = handler(client, msg)
-        if text is not None:
-            publish_result(client, msg_id, ok, text)
-        log(("OK   " if ok else "FAIL ") + action + ((" — " + text) if text else ""))
+        if msg.get("code") != PAIRING_CODE:
+            log("Ghalat pairing code wala message ignore kiya.")
+            return
+        action = msg.get("action") or ""
+        msg_id = msg.get("id")
+        log("Command: %s" % action)
+        handler = HANDLERS.get(action)
+        if handler is None:
+            publish_result(client, msg_id, False, "Ye action agent nahi janta: %s" % action)
+            return
+        if action in NEEDS_GUI and pyautogui is None:
+            publish_result(client, msg_id, False, "pyautogui install nahi — ye kaam nahi ho sakta.")
+            return
+        try:
+            ok, text = handler(client, msg)
+            if text is not None:
+                publish_result(client, msg_id, ok, text)
+            log(("OK   " if ok else "FAIL ") + action + ((" — " + text) if text else ""))
+        except Exception as e:
+            log("Command fail (%s): %s" % (action, e))
+            publish_result(client, msg_id, False, "Agent par error: %s" % e)
     except Exception as e:
-        log("ERROR %s: %s" % (action, e))
-        publish_result(client, msg_id, False, "Agent par error: %s" % e)
+        log("Message handle fail: %s" % e)
 
 
 def main():
