@@ -14,10 +14,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
-python -c "import paho.mqtt.client, pyautogui, PIL" >nul 2>&1
+python -c "import paho.mqtt.client, pyautogui, pygetwindow, PIL" >nul 2>&1
 if errorlevel 1 (
   echo Zaroori packages install ho rahe hain — thora wait karo...
-  python -m pip install --quiet paho-mqtt pyautogui pillow
+  python -m pip install --quiet paho-mqtt pyautogui pygetwindow pillow
 )
 
 echo MYRA Laptop Agent shuru ho raha hai...

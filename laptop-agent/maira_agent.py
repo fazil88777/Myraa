@@ -4,7 +4,7 @@
 MYRA Laptop Agent — phone (MYRA app) se is Windows laptop ko control karta hai.
 
 Dependencies (run_maira.bat khud install kar deta hai):
-    pip install paho-mqtt pyautogui pillow
+    pip install paho-mqtt pyautogui pygetwindow pillow
 
 Chalana:
     python maira_agent.py      (ya run_maira.bat double-click karo)
@@ -35,6 +35,7 @@ hamesha os.path.expanduser("~") se bante hain (user_dir).
 """
 
 import base64
+import ctypes
 import glob
 import hashlib
 import json
@@ -66,6 +67,12 @@ except ImportError:
     ImageGrab = None
     print("WARNING: Pillow nahi mila — capture_screen nahi chalega.")
 
+try:
+    import pygetwindow
+except ImportError:
+    pygetwindow = None
+    print("WARNING: pygetwindow nahi mila — Chrome focus (tab/goto/find) baghair focus ke hoga.")
+
 BROKER = "broker.emqx.io"
 PORT = 1883
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -75,9 +82,12 @@ HOME = os.path.expanduser("~")
 def user_dir(key):
     """Windows user folder ka asal path — kabhi hardcoded nahi:
     'desktop' -> ~/Desktop, 'documents' -> ~/Documents,
-    'downloads' -> ~/Downloads (os.path.expanduser("~") se)."""
+    'downloads' -> ~/Downloads, 'pictures' -> ~/Pictures,
+    'music' -> ~/Music, 'videos' -> ~/Videos
+    (sab os.path.expanduser("~") se bante hain)."""
     names = {"desktop": "Desktop", "documents": "Documents",
-             "downloads": "Downloads"}
+             "downloads": "Downloads", "pictures": "Pictures",
+             "music": "Music", "videos": "Videos"}
     return os.path.join(os.path.expanduser("~"), names[key])
 
 
@@ -85,6 +95,9 @@ NAMED_DIRS = {
     "desktop": user_dir("desktop"),
     "documents": user_dir("documents"),
     "downloads": user_dir("downloads"),
+    "pictures": user_dir("pictures"),
+    "music": user_dir("music"),
+    "videos": user_dir("videos"),
 }
 
 PAIRING_CODE = ""
@@ -140,10 +153,11 @@ def load_or_ask_code():
 def resolve_path(raw, default_key="desktop"):
     """User ki boli hui jagah ko asal path mein badlo.
 
-    'desktop' / 'documents' / 'downloads' (ya un se shuru hone wala
-    'Desktop/Test' jaisa path) ko ghar ke un folders par le jata hai.
-    Poora (absolute) path waisa ka waisa. Sirf naam ho to default folder
-    (Desktop) ke andar samjha jata hai.
+    'desktop' / 'documents' / 'downloads' / 'pictures' / 'music' /
+    'videos' (ya un se shuru hone wala 'Desktop/Test' jaisa path) ko
+    ghar ke un folders par le jata hai. Poora (absolute) path waisa
+    ka waisa. Sirf naam ho to default folder (Desktop) ke andar
+    samjha jata hai.
     """
     if not raw:
         return NAMED_DIRS[default_key]
@@ -381,33 +395,212 @@ def h_search_youtube(client, msg):
     return True, "YouTube search khol diya: %s" % q
 
 
+THIS_PC_CLSID = "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
+
+
 def h_open_folder(client, msg):
     key = (msg.get("folder") or msg.get("path") or "desktop").strip().lower()
+    if key in ("thispc", "this pc", "this_pc", "my computer", "computer", "my pc"):
+        try:
+            os.startfile(THIS_PC_CLSID)
+        except Exception:
+            subprocess.Popen(["explorer.exe"])
+        return True, "This PC khol diya."
     if key not in NAMED_DIRS:
-        return False, "Ye folder nahi khul sakta: %s (sirf desktop, documents, downloads)" % key
+        return False, "Ye folder nahi khul sakta: %s (desktop, documents, downloads, pictures, music, videos, thispc)" % key
     target = user_dir(key)
     os.startfile(target)
     return True, "%s folder khol diya: %s" % (key.capitalize(), target)
 
 
+def h_open_drive(client, msg):
+    raw = (msg.get("target") or msg.get("drive") or "").strip()
+    letter = ""
+    if raw:
+        c = raw[0].upper()
+        rest = raw[1:].strip()
+        if "A" <= c <= "Z" and rest in ("", ":", ":\\", "\\", "/"):
+            letter = c
+    if not letter:
+        return False, "Drive letter samajh nahi aaya: %s" % (raw or "(khaali)")
+    path = letter + ":\\"
+    if not os.path.exists(path):
+        return False, "Drive nahi mila: %s — ye drive is laptop par nahi hai." % path
+    os.startfile(path)
+    return True, "%s drive khol diya." % path
+
+
+def h_system_setting(client, msg):
+    target = (msg.get("target") or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if target == "settings":
+        os.startfile("ms-settings:")
+        return True, "Windows Settings khol di."
+    if target in ("control_panel", "controlpanel", "control"):
+        subprocess.Popen(["control"])
+        return True, "Control Panel khol diya."
+    if target == "wallpaper":
+        raw = msg.get("path") or ""
+        if not str(raw).strip():
+            return False, "Wallpaper ke liye image ka path (path) nahi diya gaya."
+        img = resolve_path(raw, "pictures")
+        if not os.path.isfile(img):
+            return False, "Wallpaper wali image nahi mili: %s" % img
+        if os.path.splitext(img)[1].lower() not in (".jpg", ".jpeg", ".png", ".bmp"):
+            return False, "Wallpaper sirf .jpg/.jpeg/.png/.bmp image ho sakti hai: %s" % img
+        ap = os.path.abspath(img)
+        try:
+            ok = ctypes.windll.user32.SystemParametersInfoW(20, 0, ap, 3)
+        except Exception as e:
+            return False, "Wallpaper set nahi ho saka: %s" % e
+        if ok:
+            return True, "Desktop wallpaper badal diya: %s" % ap
+        return False, "Windows ne wallpaper set karne se mana kar diya."
+    return False, "system_setting target samajh nahi aaya: %s (settings / control_panel / wallpaper)" % (msg.get("target") or "")
+
+
+# ------------------------------------------------- browser focus + tabs
+# Browser wale kaam (tab, scroll, goto, find) se pehle Chrome window
+# ko aage laya jata hai, warna keys kahin aur chali jati hain. Sirf
+# INHI actions ke liye — aam press_key/type_text jaan-boojh kar usi
+# window par jate hain jo user khud istemal kar raha hai.
+
+def ensure_chrome_focus():
+    """Chrome window ko activate karo. Window na mile to sirf log —
+    keys phir active window par hi jayengi (rukawat nahi)."""
+    if pygetwindow is None:
+        return False
+    try:
+        wins = []
+        for w in pygetwindow.getAllWindows():
+            try:
+                if w.title and "chrome" in w.title.lower():
+                    wins.append(w)
+            except Exception:
+                continue
+        # jo minimized nahi, woh pehle
+        wins.sort(key=lambda w: 1 if getattr(w, "isMinimized", False) else 0)
+        for w in wins:
+            try:
+                if getattr(w, "isMinimized", False):
+                    w.restore()
+                w.activate()
+                time.sleep(0.4)
+                return True
+            except Exception:
+                continue
+        log("Chrome window nahi mili — keys active window par jayengi.")
+        return False
+    except Exception as e:
+        log("Chrome focus fail: %s" % e)
+        return False
+
+
+def _scroll_clicks(msg):
+    """Scroll ki miqdar: amount diya ho to wahi clicks, warna 500."""
+    try:
+        a = int(msg.get("amount") or 0)
+    except Exception:
+        a = 0
+    return a if a > 0 else 500
+
+
 def h_scroll_up(client, msg):
-    pyautogui.scroll(_amount(msg) * 100)
+    ensure_chrome_focus()
+    pyautogui.scroll(_scroll_clicks(msg))
     return True, "Upar scroll kar diya."
 
 
 def h_scroll_down(client, msg):
-    pyautogui.scroll(-_amount(msg) * 100)
+    ensure_chrome_focus()
+    pyautogui.scroll(-_scroll_clicks(msg))
     return True, "Neeche scroll kar diya."
 
 
-def h_switch_tab(client, msg):
-    pyautogui.hotkey("ctrl", "tab")
-    return True, "Aglay tab par gaya."
+def h_scroll_top(client, msg):
+    ensure_chrome_focus()
+    pyautogui.press("home")
+    return True, "Page ke sab se upar gaya."
 
 
-def h_close_tab(client, msg):
-    pyautogui.hotkey("ctrl", "w")
-    return True, "Tab band kar diya."
+def h_scroll_bottom(client, msg):
+    ensure_chrome_focus()
+    pyautogui.press("end")
+    return True, "Page ke sab se neeche gaya."
+
+
+_TAB_KEYS = {"new": ("ctrl", "t"), "close": ("ctrl", "w"),
+             "next": ("ctrl", "tab"), "prev": ("ctrl", "shift", "tab"),
+             "previous": ("ctrl", "shift", "tab"),
+             "reopen": ("ctrl", "shift", "t")}
+
+
+def h_browser_tab(client, msg):
+    target = (msg.get("target") or "next").strip().lower()
+    combo = _TAB_KEYS.get(target)
+    if combo is None:
+        return False, "Tab target samajh nahi aaya: %s (new / close / next / prev / reopen)" % target
+    ensure_chrome_focus()
+    time.sleep(0.1)
+    pyautogui.hotkey(*combo)
+    return True, "Tab %s kar diya." % target
+
+
+def h_switch_tab(client, msg):  # purana naam — browser_tab(next) ka alias
+    return h_browser_tab(client, dict(msg, target="next"))
+
+
+def h_close_tab(client, msg):  # purana naam — browser_tab(close) ka alias
+    return h_browser_tab(client, dict(msg, target="close"))
+
+
+def h_goto_url(client, msg):
+    """Pehle se khule Chrome mein nayi site: address bar (Ctrl+L)
+    mein URL paste karke Enter."""
+    url = (msg.get("url") or msg.get("text") or "").strip()
+    if not url:
+        return False, "URL nahi diya gaya."
+    if not url.lower().startswith(("http://", "https://")):
+        url = "https://" + url
+    ensure_chrome_focus()
+    time.sleep(0.2)
+    pyautogui.hotkey("ctrl", "l")
+    time.sleep(0.2)
+    if not _paste_text(url):
+        return False, "Address bar mein URL type nahi ho saka."
+    pyautogui.press("enter")
+    return True, "Chrome mein khol diya: %s" % url
+
+
+def h_find_on_page(client, msg):
+    """Page par lafz/link dhoondo: Ctrl+F, paste, Enter, Esc.
+    Esc ke baad Chrome match ko page mein focused rakhta hai — agar
+    woh link hai to agla Enter use khol dega (activate=true par woh
+    Enter bhi daba diya jata hai; ye best-effort hai)."""
+    text = (msg.get("text") or msg.get("query") or "").strip()
+    if not text:
+        return False, "Dhoondhne ke liye text nahi diya gaya."
+    ensure_chrome_focus()
+    time.sleep(0.2)
+    pyautogui.hotkey("ctrl", "f")
+    time.sleep(0.2)
+    if not _paste_text(text):
+        return False, "Find box mein text type nahi ho saka."
+    pyautogui.press("enter")  # pehle match par jao
+    pyautogui.press("esc")    # find bar band — match focused rehta hai
+    if _truthy(msg.get("activate")):
+        pyautogui.press("enter")
+        return True, "'%s' dhoonda aur Enter bhi daba diya (link tha to khul gaya hoga — best-effort)." % text
+    return True, "'%s' page par dhoond kar wahan le gaya." % text
+
+
+def _truthy(v):
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return v != 0
+    if isinstance(v, str):
+        return v.strip().lower() in ("true", "1", "yes", "haan")
+    return False
 
 
 def _paste_text(text):
@@ -438,6 +631,9 @@ def h_type_text(client, msg):
         return False, "Likhnay ke liye text nahi diya gaya."
     time.sleep(0.3)  # active window ko settle ہونے do
     if _paste_text(text):
+        if _truthy(msg.get("enter")):
+            pyautogui.press("enter")
+            return True, "Likh kar Enter bhi daba diya (%d characters)." % len(text)
         return True, "Likh diya (%d characters)." % len(text)
     return False, "Text type nahi ho saka."
 
@@ -577,8 +773,15 @@ HANDLERS = {
     "search_google": h_search_google,
     "search_youtube": h_search_youtube,
     "open_folder": h_open_folder,
+    "open_drive": h_open_drive,
+    "system_setting": h_system_setting,
     "scroll_up": h_scroll_up,
     "scroll_down": h_scroll_down,
+    "scroll_top": h_scroll_top,
+    "scroll_bottom": h_scroll_bottom,
+    "browser_tab": h_browser_tab,
+    "goto_url": h_goto_url,
+    "find_on_page": h_find_on_page,
     "switch_tab": h_switch_tab,
     "close_tab": h_close_tab,
     "type_text": h_type_text,
@@ -589,7 +792,9 @@ HANDLERS = {
 }
 
 NEEDS_GUI = {"volume_up", "volume_down", "mute", "scroll_up", "scroll_down",
-             "switch_tab", "close_tab", "type_text", "press_key", "mouse_click"}
+             "scroll_top", "scroll_bottom", "browser_tab", "goto_url",
+             "find_on_page", "switch_tab", "close_tab", "type_text",
+             "press_key", "mouse_click"}
 
 
 # ---------------------------------------------------------------- mqtt

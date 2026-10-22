@@ -715,7 +715,7 @@ class GeminiLiveClient(private val listener: Listener) {
                             "capture_screen the laptop's screen picture is shown to you " +
                             "in the session — describe what you see naturally.",
                     obj(
-                        "action" to strProp("One of: shutdown, restart, sleep, volume_up, volume_down, mute, create_folder, delete_file, rename_file, list_directory, open_browser, open_url, search_google, search_youtube, open_folder, scroll_up, scroll_down, switch_tab, close_tab, type_text, press_key, mouse_click, capture_screen, open_app"),
+                        "action" to strProp("One of: shutdown, restart, sleep, volume_up, volume_down, mute, create_folder, delete_file, rename_file, list_directory, open_browser, open_url, search_google, search_youtube, open_folder, open_drive, browser_tab, scroll_top, scroll_bottom, goto_url, find_on_page, system_setting, scroll_up, scroll_down, switch_tab, close_tab, type_text, press_key, mouse_click, capture_screen, open_app"),
                         "path" to strProp("Optional: folder/file path or place — 'desktop', 'documents', 'downloads', or a full path like 'C:\\Users\\Fazil\\Desktop\\notes.txt'"),
                         "name" to strProp("Optional: folder name for create_folder, e.g. 'Test'"),
                         "new_name" to strProp("Optional: new name for rename_file"),
@@ -724,7 +724,9 @@ class GeminiLiveClient(private val listener: Listener) {
                         "app" to strProp("Optional: app name for open_app, e.g. 'chrome', 'vscode', 'vlc', 'notepad', 'premiere'"),
                         "key" to strProp("Optional: key for press_key, e.g. 'enter', 'esc', 'ctrl+s', 'alt+tab'"),
                         "query" to strProp("Optional: search words for search_google / search_youtube, e.g. 'funny cats'"),
-                        "folder" to strProp("Optional: folder to open for open_folder — 'desktop', 'documents' or 'downloads'"),
+                        "folder" to strProp("Optional: folder to open for open_folder — 'desktop', 'documents', 'downloads', 'pictures', 'music', 'videos' or 'thispc'"),
+                        "target" to strProp("Optional: target — drive letter for open_drive (e.g. 'D'); tab mode for browser_tab ('new', 'close', 'next', 'prev', 'reopen'); or system_setting kind ('settings', 'control_panel', 'wallpaper' — wallpaper ke liye image ka path bhi do)"),
+                        "enter" to boolProp("Optional: type_text ke liye — true ho to likhne ke foran baad Enter bhi dabega (jaise chat message bhejna ho)"),
                         "amount" to intProp("Optional: steps for volume/scroll (default 5)"),
                         "x" to intProp("Optional: mouse_click horizontal pixel position"),
                         "y" to intProp("Optional: mouse_click vertical pixel position")
@@ -908,6 +910,18 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "(apne profile) mein khule ga. Downloads, Desktop ya Documents " +
                                         "folder kholna ho to open_folder use karo (folder: desktop, " +
                                         "documents ya downloads). " +
+                                        "Koi drive (C, D, E) kholni ho to open_drive use karo (target: " +
+                                        "drive ka letter). This PC, Pictures, Music ya Videos ke liye " +
+                                        "bhi open_folder use karo (folder: thispc, pictures, music ya " +
+                                        "videos). Tab wale kaam — naya tab, tab band, agla/pichla tab, " +
+                                        "band hua tab wapas kholna — browser_tab se karo (target: new, " +
+                                        "close, next, prev ya reopen). Page ke sab se upar ya sab se " +
+                                        "neeche jana ho to scroll_top / scroll_bottom. Chrome pehle se " +
+                                        "khula ho aur koi site kholni ho to goto_url (url ke saath). " +
+                                        "Page par koi lafz ya link dhoondhna ho to find_on_page (text " +
+                                        "mein woh lafz). Wallpaper badalna ho ya Windows Settings / " +
+                                        "Control Panel kholna ho to system_setting (target: wallpaper " +
+                                        "— path mein image; ya settings; ya control_panel). " +
                                         "PURANE KAAM KA ZIKR: greeting ke foran baad, agar upar ADHOORE KAAM " +
                                         "mein koi pending task hai to us mein se SIRF EK ka zikr naturally " +
                                         "karo, jaise 'acha suno, tum ne kaha tha video generate karni hai " +

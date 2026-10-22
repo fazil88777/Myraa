@@ -56,6 +56,28 @@ sab awaaz se.
   `Win + R` dabao, `shell:startup` likho, Enter — khulne wale folder
   mein shortcut paste kar do.
 
+## Naye Universal Commands
+
+Awaaz se ye bhi keh sakte ho:
+
+- **Drives:** "laptop par D drive kholo" — C, D, E waghera jo drive
+  laptop par ho, khul jayegi (jo drive na ho, us par MYRA bata degi).
+- **This PC:** "This PC kholo" — saari drives ek saath dekhne ke liye.
+- **Folders:** Desktop, Documents, Downloads ke ilawa ab **Pictures,
+  Music, Videos** bhi — "Pictures folder kholo".
+- **Chrome tabs:** "naya tab kholo", "ye tab band karo", "agla tab",
+  "pichla tab", "band hua tab wapas kholo" — pehle Chrome window khud
+  aage aa jati hai, phir tab wala kaam hota hai.
+- **Page scroll:** "neeche scroll karo" ke ilawa "page ke sab se
+  neeche jao" / "sab se upar jao" bhi chalega.
+- **Site kholna (Chrome pehle se khula ho):** "Chrome mein
+  daraz.pk kholo" — address bar se seedha wahi site khul jayegi.
+- **Page par dhoondhna:** "is page par 'price' dhoondo" — MYRA woh
+  lafz page par dhoond kar wahan le jayegi.
+- **Wallpaper:** "wallpaper badal do" (image Pictures/Desktop mein
+  ho) — desktop ki tasveer badal jayegi.
+- **Settings:** "Windows Settings kholo" ya "Control Panel kholo".
+
 ## Masla ho to
 
 - **"Laptop se rabta nahi ho raha"** — check karo: (1) laptop par agent
