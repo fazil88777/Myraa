@@ -61,6 +61,11 @@
             android:foregroundServiceType="mediaProjection" />
 
         <service
+            android:name=".recording.ScreenRecordService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <service
             android:name=".service.MyraAccessibilityService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

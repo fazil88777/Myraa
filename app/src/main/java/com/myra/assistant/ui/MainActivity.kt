@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.myra.assistant.R
+import com.myra.assistant.recording.ScreenRecordService
 import com.myra.assistant.service.BorderOverlay
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.MyraBridge
@@ -57,6 +58,25 @@ class MainActivity : AppCompatActivity() {
             toast("Screen share ON — MYRA ab screen dekh sakti hai")
         } else {
             toast("Screen share cancel")
+        }
+    }
+
+    // One-time system dialog: "Allow MYRA to record your screen?"
+    // (separate from the screen-share one: the system hands out one
+    // consent per feature, and each result Intent is single-use.)
+    private val recordCaptureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val i = Intent(this, ScreenRecordService::class.java).apply {
+                action = ScreenRecordService.ACTION_START
+                putExtra(ScreenRecordService.EXTRA_RESULT_CODE, result.resultCode)
+                putExtra(ScreenRecordService.EXTRA_DATA, result.data)
+            }
+            ContextCompat.startForegroundService(this, i)
+            toast("Recording shuru ho rahi hai…")
+        } else {
+            toast("Recording cancel")
         }
     }
 
@@ -260,6 +280,36 @@ class MainActivity : AppCompatActivity() {
             viewModel.setSharing(false)
             toast("Screen share OFF")
         }
+    }
+
+    /**
+     * Dashboard RECORD SESSION bar: start the HD screen+audio recording
+     * (system consent once, then the recording service), or stop it if
+     * it is already running. The service itself owns state; the Home
+     * button label follows [ScreenRecordService.stateListener].
+     */
+    fun toggleScreenRecord() {
+        if (ScreenRecordService.isRecording) {
+            val i = Intent(this, ScreenRecordService::class.java).apply {
+                action = ScreenRecordService.ACTION_STOP
+            }
+            startService(i)
+            return
+        }
+        // The recorder takes the mic for the audio track — without the
+        // permission it can only fail, so ask for it first.
+        if (ContextCompat.checkSelfPermission(
+                this, Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.RECORD_AUDIO), REQ_CORE
+            )
+            toast("Pehle mic permission do — recording mein awaaz bhi aayegi")
+            return
+        }
+        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        recordCaptureLauncher.launch(mpm.createScreenCaptureIntent())
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()

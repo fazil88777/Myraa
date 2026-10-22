@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.myra.assistant.R
+import com.myra.assistant.recording.ScreenRecordService
 import com.myra.assistant.util.MyraMemory
 import com.myra.assistant.util.Prefs
 import java.text.SimpleDateFormat
@@ -31,7 +32,9 @@ import java.util.Locale
  *   (status "live"), tap again stops ("ready"). Status text under the
  *   reactor mirrors the real session: ready → connecting live… → live.
  * • Under the status: a wide SCREEN SHARE bar wired to MYRA's real
- *   screen-share (same toggle as the voice control).
+ *   screen-share (same toggle as the voice control), and beside it a
+ *   RECORD SESSION bar for the HD screen+audio recording
+ *   (ScreenRecordService — gallery export, floating stop badge).
  * • Cards: INTELLIGENCE BRIEF (today + pending tasks from MyraMemory,
  *   "+ MORE" opens the Memory screen) and SYSTEM (real voice/memory state).
  * • Own dot-style bottom nav (Home / Chat / Voice / Memory / History /
@@ -44,6 +47,12 @@ class HomeFragment : Fragment() {
     private var reactor: ReactorView? = null
     private var statusText: TextView? = null
     private var screenShareBtn: TextView? = null
+    private var recordBtn: TextView? = null
+
+    /** Stable identity so onDestroyView only clears OUR listener. */
+    private val recordStateListener: (Boolean, Long) -> Unit = { recording, elapsed ->
+        updateRecordLabel(recording, elapsed)
+    }
     private var sysVoiceState: TextView? = null
     private var sysMemoryState: TextView? = null
     private var briefDate: TextView? = null
@@ -68,6 +77,7 @@ class HomeFragment : Fragment() {
         reactor = view.findViewById(R.id.reactorView)
         statusText = view.findViewById(R.id.statusText)
         screenShareBtn = view.findViewById(R.id.screenShareBtn)
+        recordBtn = view.findViewById(R.id.recordBtn)
         sysVoiceState = view.findViewById(R.id.sysVoiceState)
         sysMemoryState = view.findViewById(R.id.sysMemoryState)
         briefDate = view.findViewById(R.id.briefDate)
@@ -113,6 +123,12 @@ class HomeFragment : Fragment() {
         // the same toggle the voice control drives.
         screenShareBtn?.setOnClickListener { act?.toggleScreenShare() }
 
+        // Record Session bar: HD screen+audio recording (ScreenRecordService).
+        // Tapping while recording stops it; the label follows the
+        // service's own state holder (elapsed time included).
+        recordBtn?.setOnClickListener { act?.toggleScreenRecord() }
+        ScreenRecordService.stateListener = recordStateListener
+
         vm.isConnected.observe(viewLifecycleOwner) { connected ->
             // Announce a fresh successful connect, like the reference app.
             if (connected == true && !wasConnected) {
@@ -144,14 +160,23 @@ class HomeFragment : Fragment() {
         refreshBrief()
         refreshSystem()
         updateShareLabel()
+        updateRecordLabel(
+            ScreenRecordService.isRecording, ScreenRecordService.elapsedMs()
+        )
         updateStatus()
     }
 
     override fun onResume() {
         super.onResume()
+        // Re-claim the state listener in case a previous instance of
+        // this fragment cleared it on its way out.
+        ScreenRecordService.stateListener = recordStateListener
         refreshBrief()
         refreshSystem()
         updateShareLabel()
+        updateRecordLabel(
+            ScreenRecordService.isRecording, ScreenRecordService.elapsedMs()
+        )
     }
 
     /** Reactor glow + status word follow the real session state. */
@@ -173,6 +198,16 @@ class HomeFragment : Fragment() {
         if (!::vm.isInitialized) return
         val on = vm.isSharing.value == true
         screenShareBtn?.text = if (on) "🖥 SCREEN SHARE: ON" else "🖥 SCREEN SHARE: OFF"
+    }
+
+    /** RECORD SESSION bar label: idle vs live elapsed timer. */
+    private fun updateRecordLabel(recording: Boolean, elapsedMs: Long) {
+        recordBtn?.text = if (recording) {
+            val secs = (elapsedMs / 1000).toInt()
+            String.format("⏺ REC %02d:%02d — STOP", secs / 60, secs % 60)
+        } else {
+            "⏺ RECORD SESSION"
+        }
     }
 
     /** INTELLIGENCE BRIEF: today's date/time + pending-task count (MyraMemory). */
@@ -207,9 +242,13 @@ class HomeFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        if (ScreenRecordService.stateListener === recordStateListener) {
+            ScreenRecordService.stateListener = null
+        }
         reactor = null
         statusText = null
         screenShareBtn = null
+        recordBtn = null
         sysVoiceState = null
         sysMemoryState = null
         briefDate = null
