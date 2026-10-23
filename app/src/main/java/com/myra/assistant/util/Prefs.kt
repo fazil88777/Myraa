@@ -54,9 +54,13 @@ object Prefs {
      *  "GEMINI_TTS" (Gemini TTS model speaks the Live session's
      *  transcript with the app's own Gemini key — realistic but the
      *  free tier's preview-model quota dies fast; on HTTP 429 the
-     *  session shifts to the free Google voice) or "EDGE" (Microsoft
+     *  session shifts to the free Google voice), "EDGE" (Microsoft
      *  Edge Neural TTS — free, no key, with Google Translate TTS as
-     *  its silent per-segment fallback). Settings > KEYS & DATA. */
+     *  its silent per-segment fallback) or "ELEVENLABS" (ElevenLabs
+     *  speaks the transcript with the user's own ElevenLabs key +
+     *  Voice ID — only active when BOTH are set, see
+     *  elevenLabsEnabled; otherwise the session falls back to plain
+     *  Live native audio). Settings > KEYS & DATA. */
     var voiceEngine: String
         get() = str("voice_engine", "GEMINI")
         set(value) = putStr("voice_engine", value)
@@ -110,16 +114,41 @@ object Prefs {
         get() = str("edge_voice", "ur-PK-UzmaNeural")
         set(value) = putStr("edge_voice", value)
 
+    /** ElevenLabs API key — the user's own key from elevenlabs.io,
+     *  stored in the same app-private prefs as the Gemini key.
+     *  Settings > KEYS & DATA. */
+    var elevenLabsKey: String
+        get() = str("elevenlabs_key", "")
+        set(value) = putStr("elevenlabs_key", value)
+
+    /** ElevenLabs Voice ID — which ElevenLabs voice speaks her
+     *  replies in ELEVENLABS engine mode. Empty by default: the user
+     *  pastes the ID of the voice he wants (e.g. his "Tara" voice). */
+    var elevenLabsVoiceId: String
+        get() = str("elevenlabs_voice_id", "")
+        set(value) = putStr("elevenlabs_voice_id", value)
+
     /**
-     * True when a transcript voice engine is selected (GEMINI_TTS or
-     * EDGE): the Live session then asks for output transcription,
-     * Gemini's own audio is discarded unheard, and the reply's
-     * transcript text is spoken by the selected TTS speaker instead.
-     * Decided once at session start — never switched mid-session.
-     * False = Gemini Live's native voice speaks (engine GEMINI).
+     * True when BOTH ElevenLabs fields are set. The ELEVENLABS engine
+     * is active only then; with either field blank the session behaves
+     * exactly like the plain GEMINI engine (Live native audio).
+     */
+    val elevenLabsEnabled: Boolean
+        get() = elevenLabsKey.isNotBlank() && elevenLabsVoiceId.isNotBlank()
+
+    /**
+     * True when a transcript voice engine is selected (GEMINI_TTS,
+     * EDGE, or ELEVENLABS-with-key-and-voice-set): the Live session
+     * then asks for output transcription, Gemini's own audio is
+     * discarded unheard, and the reply's transcript text is spoken by
+     * the selected TTS speaker instead. Decided once at session
+     * start — never switched mid-session. False = Gemini Live's
+     * native voice speaks (engine GEMINI, or ELEVENLABS selected but
+     * not configured).
      */
     val transcriptVoiceEnabled: Boolean
-        get() = voiceEngine == "EDGE" || voiceEngine == "GEMINI_TTS"
+        get() = voiceEngine == "EDGE" || voiceEngine == "GEMINI_TTS" ||
+            (voiceEngine == "ELEVENLABS" && elevenLabsEnabled)
 
     var orbEnabled: Boolean
         get() = bool("orb_enabled", true)

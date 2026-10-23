@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -173,9 +174,23 @@ class SettingsFragment : Fragment() {
                 toast("Laptop pairing code saved")
             }
         }
+        view.findViewById<View>(R.id.rowElKey).setOnClickListener {
+            secretDialog("ElevenLabs API Key", Prefs.elevenLabsKey, "ElevenLabs se key paste karo") {
+                Prefs.elevenLabsKey = it
+                refreshAll()
+                toast("ElevenLabs key saved")
+            }
+        }
+        view.findViewById<View>(R.id.rowElVoiceId).setOnClickListener {
+            textDialog("ElevenLabs Voice ID", Prefs.elevenLabsVoiceId, "Tara wali Voice ID yahan daalo") {
+                Prefs.elevenLabsVoiceId = it
+                refreshAll()
+                toast("ElevenLabs Voice ID saved")
+            }
+        }
         view.findViewById<View>(R.id.rowVoiceEngine).setOnClickListener {
-            val labels = listOf("Gemini TTS (Tara jaisi)", "Edge TTS (Free)", "Gemini Live awaaz")
-            val keys = listOf("GEMINI_TTS", "EDGE", "GEMINI")
+            val labels = listOf("Gemini TTS (Tara jaisi)", "Edge TTS (Free)", "Gemini Live awaaz", "ElevenLabs (Tara voice)")
+            val keys = listOf("GEMINI_TTS", "EDGE", "GEMINI", "ELEVENLABS")
             choiceDialog(
                 "Voice Engine",
                 labels,
@@ -187,6 +202,9 @@ class SettingsFragment : Fragment() {
                     when (keys[which]) {
                         "GEMINI_TTS" -> "Gemini TTS select ho gaya — tumhari Gemini key se chalegi"
                         "EDGE" -> "Edge TTS select ho gaya — free, koi key nahi chahiye"
+                        "ELEVENLABS" ->
+                            if (Prefs.elevenLabsEnabled) "ElevenLabs awaaz select ho gayi"
+                            else "ElevenLabs select ho gaya — pehle upar is ki API key aur Voice ID daalo"
                         else -> "Gemini Live awaaz select ho gayi"
                     }
                 )
@@ -332,10 +350,16 @@ class SettingsFragment : Fragment() {
                 if (Prefs.apiKey.isBlank()) "Not set" else "(set ✓)"
             v.findViewById<TextView>(R.id.rowLaptopCodeValue).text =
                 if (Prefs.laptopPairingCode.isBlank()) "Not set" else "(set ✓)"
+            v.findViewById<TextView>(R.id.rowElKeyValue).text =
+                if (Prefs.elevenLabsKey.isBlank()) "Not set" else "(set ✓)"
+            v.findViewById<TextView>(R.id.rowElVoiceIdValue).text =
+                if (Prefs.elevenLabsVoiceId.isBlank()) "Not set"
+                else Prefs.elevenLabsVoiceId.take(10) + "…"
             v.findViewById<TextView>(R.id.rowVoiceEngineValue).text =
                 when (Prefs.voiceEngine) {
                     "GEMINI" -> "Gemini Live awaaz"
                     "EDGE" -> "Edge TTS (Free)"
+                    "ELEVENLABS" -> "ElevenLabs (Tara voice)"
                     else -> "Gemini TTS (Tara jaisi)"
                 }
             v.findViewById<TextView>(R.id.rowEdgeVoiceValue).text =
@@ -344,6 +368,9 @@ class SettingsFragment : Fragment() {
                 when (Prefs.voiceEngine) {
                     "GEMINI_TTS" -> "Gemini TTS awaaz on hai — tumhari Gemini key se"
                     "EDGE" -> "Edge awaaz (fail ho to Google ki awaaz khud aa jayegi)"
+                    "ELEVENLABS" ->
+                        if (Prefs.elevenLabsEnabled) "ElevenLabs awaaz on hai — Tara voice bolegi"
+                        else "ElevenLabs select hai lekin key / Voice ID set nahi — Live awaaz chalegi"
                     else -> "Gemini Live ki apni awaaz chalegi"
                 }
             v.findViewById<TextView>(R.id.rowLanguageValue).text =
@@ -616,6 +643,25 @@ class SettingsFragment : Fragment() {
         val input = EditText(requireContext()).apply {
             setText(current)
             setHint(hint)
+        }
+        val wrap = FrameLayout(requireContext()).apply {
+            setPadding(48, 24, 48, 8)
+            addView(input)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setView(wrap)
+            .setPositiveButton("Save") { _, _ -> onSave(input.text.toString().trim()) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Same editor as textDialog, but the field masks input (API keys). */
+    private fun secretDialog(title: String, current: String, hint: String, onSave: (String) -> Unit) {
+        val input = EditText(requireContext()).apply {
+            setText(current)
+            setHint(hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         val wrap = FrameLayout(requireContext()).apply {
             setPadding(48, 24, 48, 8)

@@ -18,6 +18,7 @@ import com.myra.assistant.service.FloatingOrbService
 import com.myra.assistant.service.ScreenShareService
 import com.myra.assistant.util.Prefs
 import com.myra.assistant.voice.EdgeTtsSpeaker
+import com.myra.assistant.voice.ElevenLabsSpeaker
 import com.myra.assistant.voice.GeminiTtsSpeaker
 import com.myra.assistant.voice.VoiceSpeaker
 import kotlinx.coroutines.CancellationException
@@ -84,11 +85,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Transcript-mode TTS voice for THIS session (null in Gemini Live
     // audio mode). Created fresh in beginNewSession when a transcript
     // Voice Engine is selected (GEMINI_TTS -> GeminiTtsSpeaker, EDGE ->
-    // EdgeTtsSpeaker); the Live session stays in AUDIO mode but asks
-    // for output transcription, and this speaker voices the reply's
-    // transcript text sentence by sentence while Gemini's own audio is
-    // discarded.
+    // EdgeTtsSpeaker, ELEVENLABS -> ElevenLabsSpeaker); the Live session
+    // stays in AUDIO mode but asks for output transcription, and this
+    // speaker voices the reply's transcript text sentence by sentence
+    // while Gemini's own audio is discarded.
     private var voiceSpeaker: VoiceSpeaker? = null
+
+    // ElevenLabs synthesis failures (bad key scope, library voice on
+    // the free tier, unknown Voice ID, quota) toast ONCE per session —
+    // with the HTTP code AND ElevenLabs' own message — so a silent EL
+    // voice is always diagnosable on screen.
+    private var elErrorToastShown = false
+
+    /** ElevenLabsSpeaker failure surface: the FIRST failure of the
+     *  session becomes a toast like "ElevenLabs fail (HTTP 402): Free
+     *  users cannot use library voices via the API". */
+    private fun notifyElError(code: Int, serverMsg: String?) {
+        if (elErrorToastShown) return
+        elErrorToastShown = true
+        val detail = serverMsg?.trim()?.takeIf { it.isNotEmpty() }
+        postToast(
+            when {
+                code > 0 && detail != null -> "ElevenLabs fail (HTTP $code): $detail"
+                code > 0 -> "ElevenLabs fail (HTTP $code) — key / Voice ID check karo"
+                detail != null -> "ElevenLabs fail: $detail"
+                else -> "ElevenLabs fail — network check karo"
+            }
+        )
+    }
     // Silence-fix state: auto-reconnect when the socket dies, and detect a
     // "half-dead" socket (mic hears the user, but no transcription ever arrives).
     private var manualStop = false
@@ -293,6 +317,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         lastDeathPreSetup = false
         lastDeathInfo = null
         giveUpToastShown = false
+        elErrorToastShown = false
         // User pressed the button: announce the welcome voice on connect.
         speakWelcomeOnConnect = true
         // Emotional state: work out her mood BEFORE the new session's system
@@ -371,14 +396,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // — changing the key in Settings mid-session never switches voices.
         voiceSpeaker = if (Prefs.transcriptVoiceEnabled) {
             try {
-                if (Prefs.voiceEngine == "EDGE") EdgeTtsSpeaker(getApplication())
-                else GeminiTtsSpeaker(getApplication()).also { sp ->
-                    // Temporary debug surface (Fazil's request): the
-                    // speaker reports its first playing segment and its
-                    // first failure (with the HTTP code) — toasted once
-                    // per session so a silent voice is diagnosable.
-                    sp.onDebugEvent = { msg ->
-                        if (gen == sessionGen) postToast(msg)
+                when (Prefs.voiceEngine) {
+                    "EDGE" -> EdgeTtsSpeaker(getApplication())
+                    "ELEVENLABS" -> ElevenLabsSpeaker(getApplication()).also { sp ->
+                        // First synthesis failure of the session toasts
+                        // with the HTTP code + ElevenLabs' own message
+                        // (bad key, library-voice 402, quota...) — a
+                        // silent EL voice must never be undiagnosable.
+                        sp.onError = { code, msg -> notifyElError(code, msg) }
+                    }
+                    else -> GeminiTtsSpeaker(getApplication()).also { sp ->
+                        // Temporary debug surface (Fazil's request): the
+                        // speaker reports its first playing segment and its
+                        // first failure (with the HTTP code) — toasted once
+                        // per session so a silent voice is diagnosable.
+                        sp.onDebugEvent = { msg ->
+                            if (gen == sessionGen) postToast(msg)
+                        }
                     }
                 }
             } catch (_: Exception) {
