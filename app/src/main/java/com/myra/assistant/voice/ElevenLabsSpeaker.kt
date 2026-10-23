@@ -227,7 +227,13 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
         else seg.onFailed?.let { safeCallback(it) }
     }
 
-    /** One ElevenLabs TTS request. Null on ANY error (bad key, quota, network). */
+    /**
+     * One ElevenLabs TTS request. Null on ANY error (bad key, quota, network).
+     * A transient HTTP failure (429 rate-limit / heavy traffic, or 5xx) is
+     * retried ONCE after a short pause — dropping a whole sentence for a
+     * momentary 429 was losing chunks of her replies. Only the final failed
+     * attempt surfaces an error to the user.
+     */
     private fun synthesize(text: String): ByteArray? {
         val key = Prefs.elevenLabsKey
         val voiceId = Prefs.elevenLabsVoiceId
@@ -256,26 +262,58 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
                 .addHeader("Content-Type", "application/json")
                 .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
-            val c = http.newCall(request)
-            call = c
-            currentCall = c
-            c.execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    // Log the code only — never the key. The error BODY is
-                    // peeked (bounded, not consumed) solely to surface
-                    // ElevenLabs' own explanation to the user via onError.
-                    Log.d(TAG, "TTS request failed: HTTP ${resp.code}")
-                    val serverMsg = try {
-                        parseErrorMessage(resp.peekBody(8192).string())
-                    } catch (_: Exception) {
-                        null
+            var attempt = 0
+            var result: ByteArray? = null
+            var finished = false
+            while (!finished) {
+                attempt++
+                // A Call can be executed only once — every attempt builds a
+                // fresh call from the same request.
+                val c = http.newCall(request)
+                call = c
+                currentCall = c
+                val retry = c.execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        // Log the code only — never the key. The error BODY is
+                        // peeked (bounded, not consumed) solely to surface
+                        // ElevenLabs' own explanation to the user via onError.
+                        Log.d(TAG, "TTS request failed: HTTP ${resp.code}")
+                        if ((resp.code == 429 || resp.code in 500..599) && attempt == 1) {
+                            // Transient failure — retry once (below) instead
+                            // of dropping the segment, and do NOT notify yet:
+                            // only the final failed attempt surfaces an error.
+                            true
+                        } else {
+                            val serverMsg = try {
+                                parseErrorMessage(resp.peekBody(8192).string())
+                            } catch (_: Exception) {
+                                null
+                            }
+                            notifyError(resp.code, serverMsg)
+                            false
+                        }
+                    } else {
+                        result = resp.body?.bytes()
+                        false
                     }
-                    notifyError(resp.code, serverMsg)
-                    null
+                }
+                if (retry) {
+                    // Short backoff before the single retry. stopAll() can
+                    // still cancel the retried call via currentCall, and a
+                    // cancelled execute lands in the catch below, where it
+                    // is treated as a stop — not an error — exactly as
+                    // before. (This runs on the speaker pipeline thread,
+                    // never the UI thread.)
+                    try {
+                        Thread.sleep(1200)
+                    } catch (_: InterruptedException) {
+                    }
+                    if (released) finished = true
                 } else {
-                    resp.body?.bytes()
+                    finished = true
                 }
             }
+            result
         } catch (e: Exception) {
             Log.d(TAG, "TTS request error: ${e.javaClass.simpleName}: ${e.message}")
             // A call cancelled by stopAll() (barge-in / session stop) is

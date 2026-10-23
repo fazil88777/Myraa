@@ -61,6 +61,14 @@ class GeminiLiveClient(private val listener: Listener) {
         @Volatile
         var resumptionHandleMode: String? = null
 
+        /** Model of the session that minted the saved handle — a handle is
+         *  only valid for the model that created it. Without this tag, a
+         *  handle minted by the plain MODEL could be sent to
+         *  TRANSCRIPT_MODEL after a voice-engine switch and the setup
+         *  would be rejected. */
+        @Volatile
+        var resumptionHandleModel: String? = null
+
         /** Returns the saved handle only if it is fresh enough to be usable. */
         fun takeResumptionHandle(): String? {
             val h = resumptionHandle
@@ -78,6 +86,7 @@ class GeminiLiveClient(private val listener: Listener) {
             resumptionHandle = null
             resumptionHandleAt = 0L
             resumptionHandleMode = null
+            resumptionHandleModel = null
         }
     }
 
@@ -93,6 +102,22 @@ class GeminiLiveClient(private val listener: Listener) {
     private var socket: WebSocket? = null
 
     /**
+     * True only after THIS socket's setupComplete arrived. The Live server
+     * requires the setup message to be the socket's FIRST message — any
+     * audio/text/frame/tool-response that races ahead of setupComplete
+     * (e.g. a tool response landing during a reconnect) gets the whole
+     * socket closed (1007 "First message..."). All send functions except
+     * sendSetup itself are gated on this flag.
+     */
+    @Volatile
+    private var setupReady = false
+
+    /** Model the current session is being set up with (set in sendSetup):
+     *  MODEL for a plain session, TRANSCRIPT_MODEL for a transcript-voice
+     *  session. Stamped onto every resumption handle this session mints. */
+    private var currentSessionModel: String = MODEL
+
+    /**
      * True when THIS session asked the server for outputAudioTranscription
      * because the Edge TTS transcript voice speaks her replies (decided in
      * sendSetup): the
@@ -104,17 +129,25 @@ class GeminiLiveClient(private val listener: Listener) {
 
     // --- per-turn text tracking (transcript-voice mode) ---
     // turnSawTranscription: this turn already produced an outputTranscription
-    // delta — modelTurn text parts are forwarded only until then (the text
-    // part is a fallback source of her words for turns/models where the
-    // transcription never comes). turnAudioChunks / turnTextDeltas feed the
-    // silent-reply tripwire checked at turnComplete.
+    // delta. turnAudioChunks / turnTextDeltas feed the silent-reply tripwire
+    // checked at turnComplete. turnFallbackText stashes the turn's modelTurn
+    // text parts WITHOUT forwarding them: when the model sends both a text
+    // part and an outputTranscription of the same reply, forwarding both
+    // doubles the chat text and the spoken voice. The stash is forwarded at
+    // turnComplete ONLY if the turn produced no transcription at all (the
+    // v14 total-silence fallback, where the text part is the only source of
+    // her words).
     private var turnSawTranscription = false
     private var turnAudioChunks = 0
     private var turnTextDeltas = 0
+    private val turnFallbackText = StringBuilder()
     // Tripwire notice fires at most once per session (reset in sendSetup).
     private var noTextNoticeShown = false
 
     fun connect(apiKey: String) {
+        // New socket: nothing may be sent on it until ITS setupComplete
+        // arrives (see setupReady).
+        setupReady = false
         try {
             val request = Request.Builder()
                 .url(BASE_URL + apiKey)
@@ -162,6 +195,7 @@ class GeminiLiveClient(private val listener: Listener) {
     }
 
     fun disconnect() {
+        setupReady = false
         try {
             socket?.close(1000, "bye")
         } catch (_: Exception) {
@@ -186,7 +220,7 @@ class GeminiLiveClient(private val listener: Listener) {
         return when {
             code == 1000 -> friendly
             raw.isNotEmpty() && !friendly.contains(raw) ->
-                "$friendly (code $code: ${raw.take(120)})"
+                "$friendly (code $code: ${raw.take(250)})"
 
             else -> "$friendly (code $code)"
         }
@@ -776,11 +810,13 @@ class GeminiLiveClient(private val listener: Listener) {
             // session (no transcription is requested).
             val transcriptVoice = com.myra.assistant.util.Prefs.transcriptVoiceEnabled
             transcriptMode = transcriptVoice
+            currentSessionModel = if (transcriptVoice) TRANSCRIPT_MODEL else MODEL
             // Fresh session: per-turn text tracking and the once-per-session
             // silent-reply tripwire start clean.
             turnSawTranscription = false
             turnAudioChunks = 0
             turnTextDeltas = 0
+            turnFallbackText.setLength(0)
             noTextNoticeShown = false
             val genConfig = JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
@@ -813,8 +849,15 @@ class GeminiLiveClient(private val listener: Listener) {
                     // that minted it — every session now sets up AUDIO, and a
                     // stale handle tagged "TEXT" (minted by the short-lived
                     // TEXT-model build) must never be sent.
+                    // MODEL RULE: a handle is also only valid for the MODEL
+                    // that minted it — after a voice-engine switch the saved
+                    // handle may belong to the other model (plain MODEL vs
+                    // TRANSCRIPT_MODEL) and sending it gets the setup
+                    // rejected, so a model mismatch drops the handle too.
                     (
-                        if (resumptionHandleMode == "TEXT") null
+                        if (resumptionHandleMode == "TEXT" ||
+                            resumptionHandleModel != currentSessionModel
+                        ) null
                         else takeResumptionHandle()
                         )?.let { JSONObject().put("handle", it) } ?: JSONObject()
                 )
@@ -1100,6 +1143,7 @@ class GeminiLiveClient(private val listener: Listener) {
     fun sendAudio(bytes: ByteArray) {
         try {
             val s = socket ?: return
+            if (!setupReady) return
             val json = JSONObject()
                 .put(
                     "realtimeInput",
@@ -1118,6 +1162,7 @@ class GeminiLiveClient(private val listener: Listener) {
     fun sendText(text: String) {
         try {
             val s = socket ?: return
+            if (!setupReady) return
             val json = JSONObject()
                 .put(
                     "clientContent",
@@ -1143,6 +1188,7 @@ class GeminiLiveClient(private val listener: Listener) {
     fun sendVideoFrame(base64Jpeg: String) {
         try {
             val s = socket ?: return
+            if (!setupReady) return
             val json = JSONObject()
                 .put(
                     "realtimeInput",
@@ -1161,6 +1207,7 @@ class GeminiLiveClient(private val listener: Listener) {
     fun sendToolResponse(id: String, name: String, resultJson: String) {
         try {
             val s = socket ?: return
+            if (!setupReady) return
             val json = JSONObject()
                 .put(
                     "toolResponse",
@@ -1183,6 +1230,8 @@ class GeminiLiveClient(private val listener: Listener) {
         val root = JSONObject(text)
 
         if (root.has("setupComplete")) {
+            // From this moment the socket may carry real traffic.
+            setupReady = true
             listener.onSetupComplete()
         }
 
@@ -1207,6 +1256,9 @@ class GeminiLiveClient(private val listener: Listener) {
                 resumptionHandle = h
                 resumptionHandleAt = System.currentTimeMillis()
                 resumptionHandleMode = "AUDIO" // every session sets up AUDIO now
+                // Stamp the model of THIS session — the handle is only
+                // valid for that same model (see sendSetup).
+                resumptionHandleModel = currentSessionModel
                 android.util.Log.d("GeminiLive", "saved resumption handle")
             }
             return
@@ -1237,17 +1289,21 @@ class GeminiLiveClient(private val listener: Listener) {
                     if (part.has("text")) {
                         if (!transcriptMode) {
                             listener.onTextDelta(part.getString("text"))
-                        } else if (!turnSawTranscription) {
-                            // Transcript-mode fallback text path: if this
-                            // turn never produces outputTranscription (the
-                            // v14 total-silence failure), a modelTurn text
-                            // part is the ONLY source of her words — forward
-                            // it. Once the turn's first transcription delta
-                            // has arrived, text parts are ignored again:
-                            // forwarding both would double the chat and the
-                            // spoken voice.
-                            turnTextDeltas++
-                            listener.onTextDelta(part.getString("text"))
+                        } else {
+                            // Transcript mode: do NOT forward text parts
+                            // during the turn. When the model sends BOTH a
+                            // text part and an outputTranscription of the
+                            // same reply (text part first, transcription
+                            // after), forwarding both doubles the chat text
+                            // and the spoken voice (the double-voice bug).
+                            // Stash the text instead — at turnComplete it
+                            // is forwarded ONLY if the turn produced no
+                            // transcription at all (the v14 total-silence
+                            // fallback: the text part is then the only
+                            // source of her words). The stash is NOT counted
+                            // in turnTextDeltas, so the tripwire logic can
+                            // still tell "no usable text yet" apart.
+                            turnFallbackText.append(part.getString("text"))
                         }
                     }
                 }
@@ -1275,6 +1331,16 @@ class GeminiLiveClient(private val listener: Listener) {
             }
 
             if (sc.optBoolean("turnComplete")) {
+                // Transcript-mode fallback flush: the turn produced NO
+                // outputTranscription, but modelTurn text parts were stashed
+                // — those stashed words are her reply (the v14 total-silence
+                // case), so deliver them now as one delta. Counted in
+                // turnTextDeltas so the silent-reply tripwire below stays
+                // silent for this turn.
+                if (transcriptMode && turnTextDeltas == 0 && turnFallbackText.isNotEmpty()) {
+                    listener.onTextDelta(turnFallbackText.toString())
+                    turnTextDeltas++
+                }
                 // Silent-reply tripwire (transcript-voice mode): the turn
                 // carried audio but NO text of either kind (no transcription
                 // delta, no text part) — her reply can neither be shown in
@@ -1289,6 +1355,7 @@ class GeminiLiveClient(private val listener: Listener) {
                 turnSawTranscription = false
                 turnAudioChunks = 0
                 turnTextDeltas = 0
+                turnFallbackText.setLength(0)
                 listener.onTurnComplete()
             }
             if (sc.optBoolean("interrupted")) {
