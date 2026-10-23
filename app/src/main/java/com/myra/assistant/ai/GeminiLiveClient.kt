@@ -1413,7 +1413,11 @@ class GeminiLiveClient(private val listener: Listener) {
             "PUNCTUATION se chalao: narmi, waqfe aur soch ke liye '...', khushi, " +
             "hairani aur zor ke liye '!', pyaar bhare sawaalon ke liye '?'. Dheere, " +
             "naram aur pyaar bhare lehje mein bolo, jaise phone par dil ki baat ho " +
-            "rahi ho. "
+            "rahi ho. " +
+            "Jazbaat kabhi stage directions se mat dikhao — apne jawab ke text " +
+            "me [crying], (sad), *weeps* ya 'Crying:' jaisi koi tag ya label " +
+            "kabhi mat likho. Jazbaat sirf apne alfaaz, punctuation aur garam " +
+            "lehje se zahir karo (jese 'Haye...', 'Uff...', 'Sach me?!'). "
         } else {
             "speak " + speedWord() + ", softly and warmly, like a gentle woman. " +
             "Keep a soft, caring tone in every reply. "

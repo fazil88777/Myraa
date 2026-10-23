@@ -24,6 +24,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Microsoft Edge Neural TTS speaker — MYRA's FREE realistic human voice.
@@ -115,6 +116,25 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
     @Volatile private var currentPlayer: MediaPlayer? = null
     @Volatile private var playLatch: CountDownLatch? = null
 
+    /**
+     * Segments offered to the queue but not yet finished (spoken,
+     * failed, or dropped as stale). Drives [isSpeaking] — the
+     * mute-while-speaking mic guard in MainViewModel. Incremented
+     * exactly once per queue offer, decremented exactly once when the
+     * pipeline retires that segment; stopAll() zeroes it together with
+     * the queue clear, so it can never stick true.
+     */
+    private val pendingSegments = AtomicInteger(0)
+
+    override val isSpeaking: Boolean
+        get() = pendingSegments.get() > 0
+
+    private fun segmentFinished() {
+        // Floored at zero: stopAll() may already have zeroed the count
+        // on behalf of the segment that was playing while it cleared.
+        pendingSegments.updateAndGet { n -> if (n > 0) n - 1 else 0 }
+    }
+
     /** Streamed reply text not yet cut into a full sentence. */
     private val buffer = StringBuilder()
 
@@ -129,9 +149,14 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
                 if (seg.gen != generation) {
                     // Went stale before it even started (barge-in / stop).
                     seg.onFailed?.let { safeCallback(it) }
+                    segmentFinished()
                     continue
                 }
-                playSegment(seg)
+                try {
+                    playSegment(seg)
+                } finally {
+                    segmentFinished()
+                }
             }
         }
     }
@@ -167,6 +192,7 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
             safeCallback(onFailed)
             return
         }
+        pendingSegments.incrementAndGet()
         queue.offer(Segment(clean, generation, onPlayed, onFailed))
     }
 
@@ -174,6 +200,7 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
     override fun stopAll() {
         generation++
         queue.clear()
+        pendingSegments.set(0)
         synchronized(buffer) { buffer.setLength(0) }
         // Halt a Google-client playback too (layer 2 may be speaking).
         try {
@@ -218,6 +245,7 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
     private fun dispatch(sentence: String) {
         val clean = cleanForSpeech(sentence)
         if (clean.length < 2) return
+        pendingSegments.incrementAndGet()
         queue.offer(Segment(clean, generation))
     }
 
@@ -616,14 +644,33 @@ class EdgeTtsSpeaker(context: Context) : VoiceSpeaker {
     }
 
     /**
-     * Strip anything that must not be read aloud: *stage directions* and
-     * stray asterisks (the prompt forbids them in transcript-voice mode,
-     * but if one slips through the TTS would read it literally), markdown
-     * marks.
+     * Strip anything that must not be read aloud: bounded bracket
+     * spans — [like this], {like this}, (like this) — *stage
+     * directions*, stray asterisks, standalone emotion labels
+     * ("Crying: ...", "Sad — ...") at the start of the segment or
+     * right after a sentence boundary, and markdown marks. The prompt
+     * forbids all of these in transcript-voice mode, but if one slips
+     * through the TTS would read it literally as words ("crying",
+     * "sad"), so the speech path scrubs them itself.
      */
     private fun cleanForSpeech(raw: String): String {
-        var t = raw.replace(Regex("\\*[^*\\n]{0,80}\\*"), " ")
+        var t = raw
+        // Bounded spans first (no newline inside, bounded length).
+        t = t.replace(Regex("\\[[^\\]\\n]{0,100}\\]"), " ")
+        t = t.replace(Regex("\\{[^}\\n]{0,100}\\}"), " ")
+        t = t.replace(Regex("\\([^)\\n]{0,100}\\)"), " ")
+        // *stage directions* spans, then any stray asterisks.
+        t = t.replace(Regex("\\*[^*\\n]{0,80}\\*"), " ")
         t = t.replace("*", "")
+        // Standalone emotion labels: keep the sentence boundary (first
+        // capture group), drop the label and its separator.
+        val emotionLabels = "(?i)(crying|sad|happy|angry|emotional|excited|" +
+            "laughing|whispering|sighing|sighs|giggles|sniffles|weeps|weeping|" +
+            "smiling|nervous|shy|upset|worried|romantic)"
+        t = t.replace(
+            Regex("(^|[.!?]\\s+)" + emotionLabels + "\\s*[:—-]\\s*"),
+            "$1"
+        )
         t = t.replace(Regex("[#`>]"), " ")
         return t.replace(Regex("\\s+"), " ").trim()
     }

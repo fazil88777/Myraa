@@ -17,6 +17,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * ElevenLabs text-to-speech speaker — MYRA's realistic human voice
@@ -81,6 +82,25 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     @Volatile private var playLatch: CountDownLatch? = null
 
     /**
+     * Segments offered to the queue but not yet finished (spoken,
+     * failed, or dropped as stale). Drives [isSpeaking] — the
+     * mute-while-speaking mic guard in MainViewModel. Incremented
+     * exactly once per queue offer, decremented exactly once when the
+     * pipeline retires that segment; stopAll() zeroes it together with
+     * the queue clear, so it can never stick true.
+     */
+    private val pendingSegments = AtomicInteger(0)
+
+    override val isSpeaking: Boolean
+        get() = pendingSegments.get() > 0
+
+    private fun segmentFinished() {
+        // Floored at zero: stopAll() may already have zeroed the count
+        // on behalf of the segment that was playing while it cleared.
+        pendingSegments.updateAndGet { n -> if (n > 0) n - 1 else 0 }
+    }
+
+    /**
      * Synthesis failure reporter, wired by MainViewModel: invoked from the
      * pipeline thread on EVERY failed synthesis with the HTTP status code
      * (401 bad key/scope, 402 library voice on the free tier, 404 unknown
@@ -116,9 +136,14 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
                 if (seg.gen != generation) {
                     // Went stale before it even started (barge-in / stop).
                     seg.onFailed?.let { safeCallback(it) }
+                    segmentFinished()
                     continue
                 }
-                playSegment(seg)
+                try {
+                    playSegment(seg)
+                } finally {
+                    segmentFinished()
+                }
             }
         }
     }
@@ -131,13 +156,13 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     override fun enqueueDelta(delta: String) {
         if (released || delta.isEmpty()) return
         synchronized(buffer) { buffer.append(delta) }
-        for (s in extractSentences(flush = false)) dispatch(s)
+        for (s in mergeShortSentences(extractSentences(flush = false))) dispatch(s)
     }
 
     /** The model's turn ended: speak whatever partial sentence remains. */
     override fun flushTurn() {
         if (released) return
-        for (s in extractSentences(flush = true)) dispatch(s)
+        for (s in mergeShortSentences(extractSentences(flush = true))) dispatch(s)
     }
 
     /**
@@ -156,6 +181,7 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
             safeCallback(onFailed)
             return
         }
+        pendingSegments.incrementAndGet()
         queue.offer(Segment(clean, generation, onPlayed, onFailed))
     }
 
@@ -163,6 +189,7 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     override fun stopAll() {
         generation++
         queue.clear()
+        pendingSegments.set(0)
         synchronized(buffer) { buffer.setLength(0) }
         try {
             currentCall?.cancel()
@@ -202,6 +229,7 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     private fun dispatch(sentence: String) {
         val clean = cleanForSpeech(sentence)
         if (clean.length < 2) return
+        pendingSegments.incrementAndGet()
         queue.offer(Segment(clean, generation))
     }
 
@@ -249,9 +277,9 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
                 .put(
                     "voice_settings",
                     JSONObject()
-                        .put("stability", 0.45)
-                        .put("similarity_boost", 0.85)
-                        .put("style", 0.20)
+                        .put("stability", 0.35)
+                        .put("similarity_boost", 0.80)
+                        .put("style", 0.45)
                         .put("use_speaker_boost", true)
                 )
                 .toString()
@@ -419,14 +447,21 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     // Sentence cutting + speech cleanup
     // ------------------------------------------------------------------
 
+    /** Sentence terminators, incl. the Urdu full stop (۔, U+06D4) and
+     *  Urdu question mark (؟, U+061F) — Urdu transcriptions punctuate
+     *  with these, and without them such sentences never cut. */
+    private fun isTerminator(c: Char): Boolean =
+        c == '.' || c == '!' || c == '?' || c == '…' || c == '۔' || c == '؟'
+
     /**
      * Cut every COMPLETE sentence out of the streaming buffer and return
      * them in order, keeping the trailing partial sentence buffered. With
      * flush = true the partial remainder is returned too (turn end).
-     * Terminators: . ! ? … — with "..." treated as ONE terminator and
-     * decimal numbers (3.5) never split. A fragment that grows past ~240
-     * chars without any terminator is cut at a word gap so the first
-     * words start speaking quickly instead of waiting forever.
+     * Terminators: . ! ? … ۔ ؟ — with runs of terminators ("...", "?!")
+     * treated as ONE terminator and decimal numbers (3.5) never split.
+     * A fragment that grows past ~240 chars without any terminator is
+     * cut at a word gap so the first words start speaking quickly
+     * instead of waiting forever.
      */
     private fun extractSentences(flush: Boolean): List<String> {
         val out = mutableListOf<String>()
@@ -436,7 +471,7 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
             var i = 0
             while (i < s.length) {
                 val c = s[i]
-                if (c == '.' || c == '!' || c == '?' || c == '…') {
+                if (isTerminator(c)) {
                     if (c == '.' && i > 0 && i + 1 < s.length &&
                         s[i - 1].isDigit() && s[i + 1].isDigit()
                     ) {
@@ -444,7 +479,7 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
                         continue
                     }
                     var j = i
-                    while (j < s.length && (s[j] == '.' || s[j] == '!' || s[j] == '?' || s[j] == '…')) j++
+                    while (j < s.length && isTerminator(s[j])) j++
                     val seg = s.substring(start, j).trim()
                     if (seg.length >= 2) out.add(seg)
                     start = j
@@ -474,13 +509,58 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     }
 
     /**
-     * Strip anything that must not be read aloud: *stage directions* and
-     * stray asterisks (the prompt forbids them in ElevenLabs mode, but if
-     * one slips through the TTS would read it literally), markdown marks.
+     * Merge run-on short fragments into fuller segments before they
+     * are dispatched: ElevenLabs voices one complete, longer sentence
+     * far more fluidly than a 10-char scrap — every merge also means
+     * one less synthesis request and one less playback gap. A leading
+     * segment shorter than ~40 chars absorbs the following sentences
+     * (single-space join) until it reaches that size; longer sentences
+     * pass through untouched, in order.
+     */
+    private fun mergeShortSentences(sentences: List<String>): List<String> {
+        if (sentences.size < 2) return sentences
+        val out = mutableListOf<String>()
+        var current = sentences[0]
+        for (k in 1 until sentences.size) {
+            if (current.length < 40) {
+                current = current + " " + sentences[k]
+            } else {
+                out.add(current)
+                current = sentences[k]
+            }
+        }
+        out.add(current)
+        return out
+    }
+
+    /**
+     * Strip anything that must not be read aloud: bounded bracket
+     * spans — [like this], {like this}, (like this) — *stage
+     * directions*, stray asterisks, standalone emotion labels
+     * ("Crying: ...", "Sad — ...") at the start of the segment or
+     * right after a sentence boundary, and markdown marks. The prompt
+     * forbids all of these in transcript-voice mode, but if one slips
+     * through the TTS would read it literally as words ("crying",
+     * "sad"), so the speech path scrubs them itself.
      */
     private fun cleanForSpeech(raw: String): String {
-        var t = raw.replace(Regex("\\*[^*\\n]{0,80}\\*"), " ")
+        var t = raw
+        // Bounded spans first (no newline inside, bounded length).
+        t = t.replace(Regex("\\[[^\\]\\n]{0,100}\\]"), " ")
+        t = t.replace(Regex("\\{[^}\\n]{0,100}\\}"), " ")
+        t = t.replace(Regex("\\([^)\\n]{0,100}\\)"), " ")
+        // *stage directions* spans, then any stray asterisks.
+        t = t.replace(Regex("\\*[^*\\n]{0,80}\\*"), " ")
         t = t.replace("*", "")
+        // Standalone emotion labels: keep the sentence boundary (first
+        // capture group), drop the label and its separator.
+        val emotionLabels = "(?i)(crying|sad|happy|angry|emotional|excited|" +
+            "laughing|whispering|sighing|sighs|giggles|sniffles|weeps|weeping|" +
+            "smiling|nervous|shy|upset|worried|romantic)"
+        t = t.replace(
+            Regex("(^|[.!?]\\s+)" + emotionLabels + "\\s*[:—-]\\s*"),
+            "$1"
+        )
         t = t.replace(Regex("[#`>]"), " ")
         return t.replace(Regex("\\s+"), " ").trim()
     }

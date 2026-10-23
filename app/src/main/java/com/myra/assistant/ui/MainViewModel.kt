@@ -91,6 +91,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // while Gemini's own audio is discarded.
     private var voiceSpeaker: VoiceSpeaker? = null
 
+    /**
+     * Junk input transcriptions (ghost/phantom turns): filler noises
+     * and non-words the Live server's transcriber sometimes emits for
+     * room noise or her own echo. Matched lowercased + trimmed in the
+     * onInputTranscription gate; a transcription shorter than 3 chars,
+     * or with no letter/digit at all, is junk too.
+     */
+    private val junkTranscriptions = setOf(
+        "a", "aa", "ah", "uh", "um", "umm", "hmm", "hm", "mm", "mhm",
+        "oh", "eh", "ha", "huh"
+    )
+
     // ElevenLabs synthesis failures (bad key scope, library voice on
     // the free tier, unknown Voice ID, quota) toast ONCE per session —
     // with the HTTP code AND ElevenLabs' own message — so a silent EL
@@ -452,14 +464,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val beginCapture: () -> Unit = {
                     try {
                         engine.startCapture { chunk ->
-                            // Voice-activity tracking for the half-dead-socket watchdog:
-                            // ignore mic energy right after the model spoke (echo).
-                            if (isLoud(chunk) &&
-                                System.currentTimeMillis() - lastModelResponseAt > 3000
-                            ) {
-                                lastVoiceActivityAt = System.currentTimeMillis()
+                            // Mute-while-speaking (phantom-turn guard):
+                            // while HER transcript voice has a segment
+                            // queued / synthesizing / playing, the mic
+                            // mostly hears her own speaker output in the
+                            // room — send silence of the same length
+                            // instead, so her own voice can never come
+                            // back as a ghost user turn, and skip the
+                            // voice-activity bookkeeping for the chunk.
+                            if (voiceSpeaker?.isSpeaking == true) {
+                                client?.sendAudio(ByteArray(chunk.size))
+                            } else {
+                                // Voice-activity tracking for the half-dead-socket watchdog:
+                                // ignore mic energy right after the model spoke (echo).
+                                if (isLoud(chunk) &&
+                                    System.currentTimeMillis() - lastModelResponseAt > 3000
+                                ) {
+                                    lastVoiceActivityAt = System.currentTimeMillis()
+                                }
+                                client?.sendAudio(chunk)
                             }
-                            client?.sendAudio(chunk)
                         }
                     } catch (e: Exception) {
                         _statusText.postValue("Mic error: ${e.message}")
@@ -511,6 +535,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onInputTranscription(text: String) {
                 if (gen != sessionGen) return
+                // Ghost/phantom gate: junk transcriptions (single
+                // letters, filler noises, punctuation-only fragments
+                // from room noise or echo) are dropped ENTIRELY — no
+                // speech-state updates, no chat bubble, no barge-in,
+                // no shutdown check, no turn for the model.
+                val trimmed = text.trim()
+                if (trimmed.length < 3 ||
+                    trimmed.none { it.isLetterOrDigit() } ||
+                    trimmed.lowercase() in junkTranscriptions
+                ) {
+                    return
+                }
                 lastUserSpeechAt = System.currentTimeMillis()
                 lastUserText = text
                 // Shutdown command: top priority — always honored.

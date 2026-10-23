@@ -14,6 +14,16 @@ package com.myra.assistant.voice
  */
 interface VoiceSpeaker {
 
+    /**
+     * True while this speaker still has speech in flight — a segment
+     * is queued, being synthesized, or being played. MainViewModel
+     * mutes the mic (sends silence instead of room audio) while this
+     * is true, so her own voice can never come back as a phantom user
+     * turn. Speakers that cannot report it keep the default false.
+     */
+    val isSpeaking: Boolean
+        get() = false
+
     /** Feed one streamed text delta of the model's current reply. */
     fun enqueueDelta(delta: String)
 
