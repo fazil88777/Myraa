@@ -13,6 +13,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.URLEncoder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -30,10 +31,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * the other transcript engines — in AUDIO mode WITH output
  * transcription: Gemini's own audio is discarded unheard and every
  * model reply's transcript text is fed here: the streamed text is
- * split into sentences, each sentence is synthesized with
- * eleven_multilingual_v2 and the MP3s are played back strictly in
- * order on a single pipeline thread — the first sentence starts
- * speaking while the rest of the reply is still being generated.
+ * accumulated and the WHOLE reply is synthesized as one request
+ * with eleven_multilingual_v2 and played back on a single pipeline
+ * thread — one request per reply keeps the prosody continuous,
+ * while per-sentence requests made her speak every sentence
+ * separately, with a gap at every boundary. (Only a reply longer
+ * than ~400 chars is split mid-turn, at a sentence boundary.)
+ * Roman-Urdu text is transliterated to Devanagari before it is
+ * sent — see transliterateIfRomanUrdu for why.
  *
  * Robustness rules (a TTS failure must NEVER break the session):
  *  - every network/playback error just drops that one segment;
@@ -56,7 +61,9 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
         val text: String,
         val gen: Int,
         val onPlayed: (() -> Unit)? = null,
-        val onFailed: (() -> Unit)? = null
+        val onFailed: (() -> Unit)? = null,
+        /** False only for the canned greeting (speakOnce never transliterates). */
+        val transliterate: Boolean = true
     )
 
     private val appCtx: Context = context.applicationContext
@@ -122,7 +129,7 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
         }
     }
 
-    /** Streamed reply text not yet cut into a full sentence. */
+    /** Streamed reply text accumulated until turn end (whole-turn synthesis). */
     private val buffer = StringBuilder()
 
     init {
@@ -152,17 +159,38 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     // Public API (called from MainViewModel's Live listener callbacks)
     // ------------------------------------------------------------------
 
-    /** Feed one streamed text delta of the model's current reply. */
+    /**
+     * Feed one streamed text delta of the model's current reply. The
+     * text is only ACCUMULATED here — nothing is dispatched per
+     * sentence anymore (see flushTurn for why). One exception: a
+     * reply that grows past ~400 chars is split mid-turn at the last
+     * sentence boundary at or before 400 chars, so a very long reply
+     * still starts speaking before generation finishes.
+     */
     override fun enqueueDelta(delta: String) {
         if (released || delta.isEmpty()) return
         synchronized(buffer) { buffer.append(delta) }
-        for (s in mergeShortSentences(extractSentences(flush = false))) dispatch(s)
+        while (true) {
+            val chunk = drainOverflowChunk() ?: break
+            dispatch(chunk)
+        }
     }
 
-    /** The model's turn ended: speak whatever partial sentence remains. */
+    /**
+     * The model's turn ended: speak the whole accumulated reply as
+     * ONE segment — a single ElevenLabs request for the entire
+     * reply, so her voice flows continuously instead of restarting
+     * (with a synthesis + playback gap) at every sentence.
+     */
     override fun flushTurn() {
         if (released) return
-        for (s in mergeShortSentences(extractSentences(flush = true))) dispatch(s)
+        val whole = synchronized(buffer) {
+            val s = buffer.toString()
+            buffer.setLength(0)
+            s
+        }
+        val text = whole.trim()
+        if (text.isNotEmpty()) dispatch(text)
     }
 
     /**
@@ -182,7 +210,7 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
             return
         }
         pendingSegments.incrementAndGet()
-        queue.offer(Segment(clean, generation, onPlayed, onFailed))
+        queue.offer(Segment(clean, generation, onPlayed, onFailed, transliterate = false))
     }
 
     /** Barge-in / new turn / session stop: silence NOW, drop everything pending. */
@@ -237,7 +265,7 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
         var ok = false
         var file: File? = null
         try {
-            val bytes = synthesize(seg.text)
+            val bytes = synthesize(seg.text, seg.transliterate)
             if (bytes != null && seg.gen == generation && !released) {
                 file = File.createTempFile("myra_el_", ".mp3", appCtx.cacheDir)
                 file.writeBytes(bytes)
@@ -262,17 +290,22 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
      * momentary 429 was losing chunks of her replies. Only the final failed
      * attempt surfaces an error to the user.
      */
-    private fun synthesize(text: String): ByteArray? {
+    private fun synthesize(text: String, transliterate: Boolean = true): ByteArray? {
         val key = Prefs.elevenLabsKey
         val voiceId = Prefs.elevenLabsVoiceId
         if (key.isBlank() || voiceId.isBlank()) {
             notifyError(-1, "API key / Voice ID set nahi hai")
             return null
         }
+        // What ElevenLabs actually receives: a Roman-Urdu reply is
+        // transliterated to Devanagari first (fluency — see
+        // transliterateIfRomanUrdu); anything else, and every
+        // transliteration failure, keeps the original text.
+        val speakText = if (transliterate) transliterateIfRomanUrdu(text) else text
         var call: Call? = null
         return try {
             val body = JSONObject()
-                .put("text", text)
+                .put("text", speakText)
                 .put("model_id", MODEL_ID)
                 .put(
                     "voice_settings",
@@ -454,22 +487,20 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
         c == '.' || c == '!' || c == '?' || c == '…' || c == '۔' || c == '؟'
 
     /**
-     * Cut every COMPLETE sentence out of the streaming buffer and return
-     * them in order, keeping the trailing partial sentence buffered. With
-     * flush = true the partial remainder is returned too (turn end).
-     * Terminators: . ! ? … ۔ ؟ — with runs of terminators ("...", "?!")
-     * treated as ONE terminator and decimal numbers (3.5) never split.
-     * A fragment that grows past ~240 chars without any terminator is
-     * cut at a word gap so the first words start speaking quickly
-     * instead of waiting forever.
+     * Overflow guard for very long replies: if the buffered text has
+     * grown past ~400 chars, cut the oldest part at the LAST sentence
+     * terminator that ends at or before position 400 and return it
+     * for dispatch, keeping the remainder buffered. Returns null when
+     * the buffer is still short enough — or when no terminator
+     * qualifies (a single monster sentence is left for flushTurn).
      */
-    private fun extractSentences(flush: Boolean): List<String> {
-        val out = mutableListOf<String>()
+    private fun drainOverflowChunk(): String? {
         synchronized(buffer) {
             val s = buffer.toString()
-            var start = 0
+            if (s.length <= 400) return null
+            var cutEnd = -1
             var i = 0
-            while (i < s.length) {
+            while (i < s.length && i <= 400) {
                 val c = s[i]
                 if (isTerminator(c)) {
                     if (c == '.' && i > 0 && i + 1 < s.length &&
@@ -480,57 +511,113 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
                     }
                     var j = i
                     while (j < s.length && isTerminator(s[j])) j++
-                    val seg = s.substring(start, j).trim()
-                    if (seg.length >= 2) out.add(seg)
-                    start = j
+                    if (j <= 400) cutEnd = j
                     i = j
                 } else {
                     i++
                 }
             }
-            var rest = s.substring(start)
-            if (!flush && rest.length > 240) {
-                val cut = rest.lastIndexOf(' ', 240)
-                if (cut > 40) {
-                    val seg = rest.substring(0, cut).trim()
-                    if (seg.length >= 2) out.add(seg)
-                    rest = rest.substring(cut + 1)
-                }
-            }
-            if (flush) {
-                val seg = rest.trim()
-                if (seg.isNotEmpty()) out.add(seg)
-                rest = ""
-            }
+            if (cutEnd < 2) return null
+            val chunk = s.substring(0, cutEnd).trim()
             buffer.setLength(0)
-            buffer.append(rest)
+            buffer.append(s.substring(cutEnd))
+            return chunk.ifEmpty { null }
         }
-        return out
+    }
+
+    // ------------------------------------------------------------------
+    // Roman Urdu -> Devanagari transliteration (ElevenLabs fluency)
+    // ------------------------------------------------------------------
+
+    /**
+     * ElevenLabs' eleven_multilingual_v2 does NOT support Urdu, and
+     * it reads Roman-Urdu (Latin script) text haltingly — word by
+     * word, with gaps. It DOES support Hindi, and spoken Urdu and
+     * spoken Hindi are the same language; Devanagari also has exact
+     * letters for every Urdu sound. So text bound for ElevenLabs is
+     * transliterated to Devanagari first (via Google Input Tools).
+     * Only the TTS-bound text changes — the chat keeps showing
+     * Roman Urdu. ANY failure here (network, timeout, malformed
+     * reply) silently falls back to the original text:
+     * transliteration must never break or block speech.
+     */
+    private val transliterationCache = HashMap<String, String>()
+
+    /** Tight timeouts on purpose: a slow transliteration must never
+     *  hold up her voice — on any delay the original text is used. */
+    private val transliterationHttp: OkHttpClient by lazy {
+        http.newBuilder()
+            .connectTimeout(2, TimeUnit.SECONDS)
+            .readTimeout(3, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /** Common Roman-Urdu words. A segment counts as Roman Urdu when
+     *  at least two of its whole words come from this set — that
+     *  keeps plain English (which also contains "main", "he", ...)
+     *  untouched. */
+    private val romanUrduMarkers = setOf(
+        "hai", "he", "hoon", "hun", "mein", "main", "tum", "aap",
+        "ka", "ki", "ke", "ko", "se", "raha", "rahi", "rahe",
+        "karo", "kar", "gaya", "gayi", "hua", "hui", "nahi", "bhi",
+        "aur", "ye", "yeh", "wo", "woh", "mera", "meri", "tumhari",
+        "kya", "abhi", "phir", "matlab", "bilkul", "theek", "thik",
+        "acha", "achha", "bohat", "bahut", "zaroor", "shayad",
+        "lekin", "magar", "kyun", "kyunke", "jab", "tab", "idhar",
+        "udhar", "ghar", "baat", "awaaz", "sun"
+    )
+
+    private fun transliterateIfRomanUrdu(text: String): String {
+        // Already written in a script ElevenLabs handles natively
+        // (Urdu/Arabic script U+0600–U+06FF, or Devanagari
+        // U+0900–U+097F) — leave it untouched.
+        if (text.any { it in '؀'..'ۿ' || it in 'ऀ'..'ॿ' }) return text
+        val words = text.lowercase()
+            .split(Regex("[^a-z]+"))
+            .filter { it.isNotEmpty() }
+        if (words.count { it in romanUrduMarkers } < 2) return text
+        synchronized(transliterationCache) {
+            transliterationCache[text]?.let { return it }
+        }
+        val converted = fetchTransliteration(text) ?: return text
+        synchronized(transliterationCache) {
+            if (transliterationCache.size > 200) transliterationCache.clear()
+            transliterationCache[text] = converted
+        }
+        return converted
     }
 
     /**
-     * Merge run-on short fragments into fuller segments before they
-     * are dispatched: ElevenLabs voices one complete, longer sentence
-     * far more fluidly than a 10-char scrap — every merge also means
-     * one less synthesis request and one less playback gap. A leading
-     * segment shorter than ~40 chars absorbs the following sentences
-     * (single-space join) until it reaches that size; longer sentences
-     * pass through untouched, in order.
+     * One Google Input Tools call converting the WHOLE phrase in a
+     * single request. Reply shape:
+     * ["SUCCESS",[["<original>",["<converted phrase>"],[],{...}]]]
+     * — the converted full phrase is element [1][0][1][0]. Null on
+     * any problem (the caller then uses the original text).
      */
-    private fun mergeShortSentences(sentences: List<String>): List<String> {
-        if (sentences.size < 2) return sentences
-        val out = mutableListOf<String>()
-        var current = sentences[0]
-        for (k in 1 until sentences.size) {
-            if (current.length < 40) {
-                current = current + " " + sentences[k]
-            } else {
-                out.add(current)
-                current = sentences[k]
+    private fun fetchTransliteration(text: String): String? {
+        return try {
+            val url = "https://inputtools.google.com/request?itc=hi-t-i0-und" +
+                "&num=1&cp=0&cs=1&ie=utf-8&oe=utf-8&text=" +
+                URLEncoder.encode(text, "UTF-8")
+            val request = Request.Builder().url(url).get().build()
+            transliterationHttp.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    null
+                } else {
+                    val body = resp.body?.string()
+                    if (body.isNullOrBlank()) {
+                        null
+                    } else {
+                        JSONArray(body)
+                            .optJSONArray(1)?.optJSONArray(0)?.optJSONArray(1)
+                            ?.optString(0)?.takeIf { it.isNotBlank() }
+                    }
+                }
             }
+        } catch (e: Exception) {
+            Log.d(TAG, "transliteration failed, original text used: ${e.javaClass.simpleName}")
+            null
         }
-        out.add(current)
-        return out
     }
 
     /**
