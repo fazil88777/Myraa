@@ -2,7 +2,10 @@ package com.myra.assistant.voice
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.MediaPlayer
+import android.util.Base64
 import android.util.Log
 import com.myra.assistant.util.Prefs
 import okhttp3.Call
@@ -10,6 +13,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -30,13 +36,23 @@ import java.util.concurrent.atomic.AtomicInteger
  * Prefs.elevenLabsEnabled). The Gemini Live session then runs — like
  * the other transcript engines — in AUDIO mode WITH output
  * transcription: Gemini's own audio is discarded unheard and every
- * model reply's transcript text is fed here: the streamed text is
- * accumulated and the WHOLE reply is synthesized as one request
- * with eleven_multilingual_v2 and played back on a single pipeline
- * thread — one request per reply keeps the prosody continuous,
- * while per-sentence requests made her speak every sentence
- * separately, with a gap at every boundary. (Only a reply longer
- * than ~400 chars is split mid-turn, at a sentence boundary.)
+ * model reply's transcript text is fed here.
+ *
+ * HOW A REPLY IS SPOKEN (v33): the v30 whole-turn REST design made
+ * her wait — silently — for the FULL reply text, one full synthesis
+ * and the complete MP3 before the first sound (~5 s of dead air,
+ * because first-audio latency was generation + transliteration +
+ * full synthesis). Now a reply STREAMS: as soon as its first
+ * sentence is complete it goes over ElevenLabs' stream-input
+ * WebSocket (eleven_multilingual_v2, output_format=pcm_24000), the
+ * returned PCM starts playing through an AudioTrack almost
+ * immediately, and the remaining sentences follow over the same
+ * socket, so speech flows continuously, like Gemini's own voice.
+ * If the socket cannot be opened or dies mid-turn, whatever text
+ * has not been spoken yet falls back to the v30 REST path below
+ * (synthesize the whole remainder + MediaPlayer) — speech is
+ * never lost, only delayed. speakOnce (the greeting) always uses
+ * the REST path.
  * Roman-Urdu text is transliterated to Devanagari before it is
  * sent — see transliterateIfRomanUrdu for why.
  *
@@ -51,6 +67,7 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     companion object {
         private const val TAG = "ElevenLabs"
         private const val API_BASE = "https://api.elevenlabs.io/v1/text-to-speech/"
+        private const val WS_BASE = "wss://api.elevenlabs.io/v1/text-to-speech/"
         private const val MODEL_ID = "eleven_multilingual_v2"
 
         /** True when the user configured key + voice id in Settings. */
@@ -156,31 +173,89 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     }
 
     // ------------------------------------------------------------------
+    // Streaming state (v33). The REST queue above remains the
+    // greeting path AND the automatic fallback for any turn the
+    // socket cannot carry.
+    // ------------------------------------------------------------------
+
+    /** One queued unit of streamed work for the stream worker. */
+    private sealed class StreamItem {
+        /** Generation this item belongs to (stale items are dropped). */
+        abstract val gen: Int
+
+        /** A complete sentence (or overflow chunk) of the turn. */
+        class Chunk(override val gen: Int, val text: String) : StreamItem()
+
+        /**
+         * Turn end: [text] is the final partial sentence (may be
+         * blank when everything was already chunked) — send it (if
+         * any), then EOS, then ride the session to completion.
+         */
+        class Final(override val gen: Int, val text: String) : StreamItem()
+    }
+
+    private val streamQueue = LinkedBlockingQueue<StreamItem>()
+    private val streamExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "myra-elevenlabs-stream").apply { isDaemon = true }
+    }
+
+    /**
+     * Generation whose stream failed over to REST: later chunks of
+     * that same turn go straight to the REST queue instead of the
+     * socket. Generations only ever increase, so a stale value can
+     * never match a future turn.
+     */
+    @Volatile private var streamFailedGen = -1
+
+    /** Generation for which stream chunks were offered this turn. */
+    @Volatile private var streamTurnGen = -1
+
+    /**
+     * Socket client: no read timeout (a WebSocket lives as long as
+     * the turn does), plus pings so NATs don't reap it mid-reply.
+     */
+    private val wsHttp: OkHttpClient by lazy {
+        http.newBuilder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .pingInterval(20, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /** The live stream session, so stopAll() can tear it down NOW. */
+    @Volatile private var activeSession: ElStreamSession? = null
+
+    init {
+        streamExecutor.execute { runStreamWorker() }
+    }
+
+    // ------------------------------------------------------------------
     // Public API (called from MainViewModel's Live listener callbacks)
     // ------------------------------------------------------------------
 
     /**
-     * Feed one streamed text delta of the model's current reply. The
-     * text is only ACCUMULATED here — nothing is dispatched per
-     * sentence anymore (see flushTurn for why). One exception: a
-     * reply that grows past ~400 chars is split mid-turn at the last
-     * sentence boundary at or before 400 chars, so a very long reply
-     * still starts speaking before generation finishes.
+     * Feed one streamed text delta of the model's current reply.
+     * Text accumulates in the buffer; every COMPLETE sentence is cut
+     * and handed to the stream worker immediately, so the first
+     * sentence starts sounding while Gemini is still writing the
+     * rest — no more waiting for the whole reply. (A monster stretch
+     * with no sentence boundary still falls back to the old ~400-char
+     * overflow cut.) If this turn's stream has already failed over,
+     * chunks go straight to the REST queue instead.
      */
     override fun enqueueDelta(delta: String) {
         if (released || delta.isEmpty()) return
         synchronized(buffer) { buffer.append(delta) }
         while (true) {
-            val chunk = drainOverflowChunk() ?: break
-            dispatch(chunk)
+            val chunk = drainSentenceChunk() ?: drainOverflowChunk() ?: break
+            offerChunk(chunk)
         }
     }
 
     /**
-     * The model's turn ended: speak the whole accumulated reply as
-     * ONE segment — a single ElevenLabs request for the entire
-     * reply, so her voice flows continuously instead of restarting
-     * (with a synthesis + playback gap) at every sentence.
+     * The model's turn ended. Whatever partial sentence remains
+     * becomes the stream's final chunk (followed by EOS). When the
+     * stream already failed over for this turn, the remainder goes
+     * to the REST queue as one segment — v30's whole-turn synthesis.
      */
     override fun flushTurn() {
         if (released) return
@@ -190,7 +265,26 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
             s
         }
         val text = whole.trim()
-        if (text.isNotEmpty()) dispatch(text)
+        val gen = generation
+        if (streamFailedGen == gen) {
+            if (text.isNotEmpty()) dispatch(text)
+            return
+        }
+        if (text.isEmpty() && streamTurnGen != gen) return // nothing happened this turn
+        // A reply that produced no chunk during the turn (one short
+        // sentence) still streams — as a single Final chunk.
+        streamQueue.offer(StreamItem.Final(gen, text))
+    }
+
+    /** Route one cut chunk: socket normally, REST queue after a failover. */
+    private fun offerChunk(chunk: String) {
+        val gen = generation
+        if (streamFailedGen == gen) {
+            dispatch(chunk)
+            return
+        }
+        if (streamTurnGen != gen) streamTurnGen = gen
+        streamQueue.offer(StreamItem.Chunk(gen, chunk))
     }
 
     /**
@@ -219,6 +313,17 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
         queue.clear()
         pendingSegments.set(0)
         synchronized(buffer) { buffer.setLength(0) }
+        // Streaming teardown: drop queued stream work and silence the
+        // live session NOW (socket cancelled, track torn down). The
+        // stream worker sees the generation bump and abandons
+        // anything it was holding for the dead turn.
+        streamQueue.clear()
+        streamTurnGen = -1
+        try {
+            activeSession?.kill()
+        } catch (_: Exception) {
+        }
+        activeSession = null
         try {
             currentCall?.cancel()
         } catch (_: Exception) {
@@ -246,6 +351,10 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
         }
         try {
             executor.shutdownNow()
+        } catch (_: Exception) {
+        }
+        try {
+            streamExecutor.shutdownNow()
         } catch (_: Exception) {
         }
     }
@@ -522,6 +631,660 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
             buffer.setLength(0)
             buffer.append(s.substring(cutEnd))
             return chunk.ifEmpty { null }
+        }
+    }
+
+    /**
+     * Cut the FIRST complete sentence off the buffer and return it:
+     * everything up to and including the first run of sentence
+     * terminators (with the same decimal-point guard as the overflow
+     * cut, so "3.5" never splits), plus any closing quotes/brackets
+     * that belong to that sentence. Null while the buffer holds only
+     * a partial sentence. This is what lets speech start at the
+     * first sentence instead of at turn end.
+     */
+    private fun drainSentenceChunk(): String? {
+        synchronized(buffer) {
+            val s = buffer.toString()
+            var i = 0
+            while (i < s.length) {
+                val c = s[i]
+                if (isTerminator(c)) {
+                    if (c == '.' && i > 0 && i + 1 < s.length &&
+                        s[i - 1].isDigit() && s[i + 1].isDigit()
+                    ) {
+                        i++
+                        continue
+                    }
+                    var j = i
+                    while (j < s.length && isTerminator(s[j])) j++
+                    while (j < s.length && (s[j] == '"' || s[j] == '\'' ||
+                            s[j] == ')' || s[j] == '”' || s[j] == '’')
+                    ) j++
+                    val chunk = s.substring(0, j).trim()
+                    buffer.setLength(0)
+                    buffer.append(s.substring(j))
+                    return chunk.ifEmpty { null }
+                }
+                i++
+            }
+            return null
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming machinery (v33)
+    // ------------------------------------------------------------------
+
+    /**
+     * Retire a stream session exactly once (stream worker thread
+     * only): let any received-but-unplayed audio finish sounding
+     * first — the streamed voice and a REST fallback must never
+     * overlap — then hand whatever was never heard to the REST
+     * queue and settle the session's isSpeaking count.
+     */
+    private fun closeOutSession(s: ElStreamSession) {
+        try {
+            s.awaitDrain(30_000)
+        } catch (_: Exception) {
+        }
+        val unspoken = try {
+            s.unspokenText()
+        } catch (_: Exception) {
+            ""
+        }
+        if (unspoken.isNotBlank() && s.gen == generation && !released) {
+            streamFailedGen = s.gen
+            dispatch(unspoken)
+        }
+        if (activeSession === s) activeSession = null
+        segmentFinished()
+    }
+
+    /**
+     * The stream worker: sole owner of the WebSocket send side, so
+     * chunks reach ElevenLabs strictly in reply order. Per turn it
+     * lazily opens an [ElStreamSession] on the first real chunk,
+     * transliterates and sends every chunk, and on the turn's Final
+     * item sends EOS and rides the session to the end of playback
+     * before touching the next turn — two turns can never overlap.
+     *
+     * Failure rule: the moment a session is seen failed, its
+     * unspoken tail is re-dispatched through the REST queue (see
+     * [closeOutSession]) and [streamFailedGen] reroutes the rest of
+     * that turn to REST — speech is never lost, only delayed.
+     *
+     * isSpeaking accounting: exactly one pendingSegments increment
+     * per session (here, at creation) and exactly one decrement
+     * (in [closeOutSession]) — REST fallback segments count
+     * themselves separately, so the mic gate stays truthful across
+     * the handoff.
+     */
+    private fun runStreamWorker() {
+        var session: ElStreamSession? = null
+        var sessionGen = -1
+        while (!released) {
+            val item = try {
+                streamQueue.take()
+            } catch (_: InterruptedException) {
+                break
+            }
+            if (item.gen != generation) {
+                // Went stale while queued (barge-in / stop).
+                continue
+            }
+            try {
+                when (item) {
+                    is StreamItem.Chunk -> {
+                        if (session != null && sessionGen != item.gen) {
+                            closeOutSession(session!!)
+                            session = null
+                            sessionGen = -1
+                        }
+                        var s = session
+                        if (s != null && s.failed) {
+                            closeOutSession(s)
+                            session = null
+                            sessionGen = -1
+                            s = null
+                        }
+                        val clean = cleanForSpeech(item.text)
+                        if (clean.length >= 2) {
+                            if (streamFailedGen == item.gen) {
+                                dispatch(item.text)
+                            } else {
+                                if (s == null) {
+                                    s = ElStreamSession(item.gen)
+                                    session = s
+                                    sessionGen = item.gen
+                                    activeSession = s
+                                    pendingSegments.incrementAndGet()
+                                }
+                                s.sendChunk(
+                                    clean,
+                                    transliterateIfRomanUrdu(clean),
+                                    final = false
+                                )
+                            }
+                        }
+                    }
+                    is StreamItem.Final -> {
+                        if (session != null && sessionGen != item.gen) {
+                            closeOutSession(session!!)
+                            session = null
+                            sessionGen = -1
+                        }
+                        val clean = cleanForSpeech(item.text)
+                        var s = session
+                        if (s == null && clean.length >= 2 &&
+                            streamFailedGen != item.gen
+                        ) {
+                            s = ElStreamSession(item.gen)
+                            session = s
+                            sessionGen = item.gen
+                            activeSession = s
+                            pendingSegments.incrementAndGet()
+                        }
+                        if (s != null) {
+                            if (clean.length >= 2) {
+                                if (s.failed) {
+                                    s.noteUnsent(clean)
+                                } else {
+                                    s.sendChunk(
+                                        clean,
+                                        transliterateIfRomanUrdu(clean),
+                                        final = true
+                                    )
+                                }
+                            }
+                            s.finishAndAwait()
+                            session = null
+                            sessionGen = -1
+                            closeOutSession(s)
+                        } else if (clean.length >= 2) {
+                            // The stream failed and closed out before
+                            // the final piece arrived — REST speaks it.
+                            dispatch(item.text)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "stream item dropped: ${e.javaClass.simpleName}: ${e.message}")
+                // A session that blew up mid-item: kill it and close
+                // it out so its text fails over instead of vanishing,
+                // and never let one bad item wedge the worker.
+                val s = session
+                if (s != null) {
+                    try {
+                        s.kill()
+                    } catch (_: Exception) {
+                    }
+                    session = null
+                    sessionGen = -1
+                    closeOutSession(s)
+                }
+            }
+        }
+    }
+
+    /**
+     * One turn's ElevenLabs stream-input WebSocket plus its
+     * AudioTrack playback. Created, fed and retired ONLY by the
+     * stream worker thread; the WebSocket listener (OkHttp threads)
+     * and the player thread touch only its thread-safe queues and
+     * counters.
+     *
+     * Protocol (ElevenLabs docs + official SDK, verified for v33):
+     * connect to wss://api.elevenlabs.io/v1/text-to-speech/{voiceId}
+     * /stream-input?model_id=eleven_multilingual_v2&output_format=
+     * pcm_24000, send a BOS message {"text":" ", voice_settings,
+     * generation_config, xi_api_key}, then one {"text": chunk,
+     * "try_trigger_generation": true} per chunk (the last with
+     * "flush": true), then EOS {"text": ""}. Replies are JSON:
+     * {"audio": "<base64 pcm>", "isFinal": bool}.
+     *
+     * Spoken-ness bookkeeping for the REST fallback: every chunk's
+     * CLEANED source text is remembered with the moment it was
+     * sent, and every audio message notes its arrival time. A chunk
+     * counts as spoken once any audio arrived after it was sent;
+     * [unspokenText] replays everything from the first chunk that
+     * never saw audio, plus chunks never sent at all. (Streaming
+     * has no per-chunk acknowledgement, so at a failure boundary a
+     * few words can in the worst case be spoken twice — losing the
+     * rest of the reply would be worse.)
+     */
+    private inner class ElStreamSession(val gen: Int) {
+
+        private val lock = Object()
+        private var ws: WebSocket? = null
+        private val openLatch = CountDownLatch(1)
+        @Volatile var failed = false
+            private set
+        @Volatile private var killed = false
+        @Volatile private var bosSent = false
+        @Volatile private var inputClosed = false
+
+        // Fallback bookkeeping (lists guarded by lock).
+        private val sentChunks = ArrayList<Pair<String, Long>>()
+        private val unsentChunks = ArrayList<String>()
+        @Volatile private var lastAudioAt = 0L
+        @Volatile private var finalReceived = false
+        /** Audio arrived but the track could not play it: nothing
+         *  counts as spoken, the fallback replays the whole turn. */
+        @Volatile private var playbackBroken = false
+
+        // Playback.
+        private val pcmQueue = LinkedBlockingQueue<ByteArray>()
+        @Volatile private var playerStarted = false
+        private var track: AudioTrack? = null
+        @Volatile private var framesWritten = 0L
+        private val doneLatch = CountDownLatch(1)
+        @Volatile private var done = false
+
+        private val listener = object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                openLatch.countDown()
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                try {
+                    val msg = JSONObject(text)
+                    if (!msg.isNull("error")) {
+                        markFailed()
+                        return
+                    }
+                    val audio = msg.optString("audio", "")
+                    if (audio.isNotEmpty()) {
+                        val pcm = Base64.decode(audio, Base64.DEFAULT)
+                        if (pcm.isNotEmpty()) {
+                            lastAudioAt = System.currentTimeMillis()
+                            startPlayerIfNeeded()
+                            // PCM16 chunks are byte-aligned; drop a
+                            // stray odd byte rather than misalign.
+                            pcmQueue.offer(
+                                if (pcm.size % 2 == 0) pcm
+                                else pcm.copyOf(pcm.size - 1)
+                            )
+                        }
+                    }
+                    if (msg.optBoolean("isFinal", false)) {
+                        finalReceived = true
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "stream message dropped: ${e.javaClass.simpleName}")
+                }
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                try {
+                    webSocket.close(1000, null)
+                } catch (_: Exception) {
+                }
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                openLatch.countDown()
+                // A close is clean only after the final audio
+                // message; anything earlier loses the turn's tail
+                // unless the fallback replays it.
+                if (!finalReceived && !killed) markFailed()
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                openLatch.countDown()
+                if (!killed) markFailed()
+            }
+        }
+
+        /**
+         * Send one already-cleaned chunk; [speakText] is its
+         * transliterated form (what ElevenLabs actually receives).
+         * Never throws: any failure marks the session failed and
+         * parks the chunk in the unsent pool for the REST fallback.
+         */
+        fun sendChunk(cleanText: String, speakText: String, final: Boolean) {
+            if (failed || killed) {
+                noteUnsent(cleanText)
+                return
+            }
+            if (!ensureOpen()) {
+                markFailed()
+                noteUnsent(cleanText)
+                return
+            }
+            val payload = try {
+                JSONObject()
+                    .put("text", if (final) speakText else speakText + " ")
+                    .put("flush", final)
+                    .put("try_trigger_generation", true)
+                    .toString()
+            } catch (_: Exception) {
+                markFailed()
+                noteUnsent(cleanText)
+                return
+            }
+            val sent = try {
+                ws?.send(payload) == true
+            } catch (_: Exception) {
+                false
+            }
+            if (sent) {
+                synchronized(lock) {
+                    sentChunks.add(cleanText to System.currentTimeMillis())
+                }
+            } else {
+                markFailed()
+                noteUnsent(cleanText)
+            }
+        }
+
+        /** Remember a chunk that never reached the socket. */
+        fun noteUnsent(cleanText: String) {
+            synchronized(lock) { unsentChunks.add(cleanText) }
+        }
+
+        /**
+         * Turn is fully fed: send EOS, then wait until playback has
+         * actually drained (or the wait is abandoned by a kill /
+         * generation bump). The socket is closed on the way out.
+         */
+        fun finishAndAwait() {
+            inputClosed = true
+            if (!failed && !killed && bosSent) {
+                val ok = try {
+                    ws?.send(JSONObject().put("text", "").toString()) == true
+                } catch (_: Exception) {
+                    false
+                }
+                if (!ok) markFailed()
+            }
+            startPlayerIfNeeded()
+            awaitDrain(600_000)
+            closeSocket()
+        }
+
+        /**
+         * Wait until the player thread reports playback complete.
+         * Sliced, so a kill or generation bump (stopAll) abandons
+         * the wait promptly; [timeoutMs] is only a paranoia cap.
+         */
+        fun awaitDrain(timeoutMs: Long) {
+            if (!playerStarted) return
+            val deadline = System.currentTimeMillis() + timeoutMs
+            while (!done) {
+                if (killed || gen != generation || released) return
+                if (System.currentTimeMillis() > deadline) return
+                try {
+                    if (doneLatch.await(150, TimeUnit.MILLISECONDS)) return
+                } catch (_: InterruptedException) {
+                    return
+                }
+            }
+        }
+
+        /**
+         * The part of this turn that was never heard, in order:
+         * chunks sent but followed by no audio at all, plus chunks
+         * that never got sent. Blank when everything sent saw audio.
+         */
+        fun unspokenText(): String {
+            val parts = ArrayList<String>()
+            synchronized(lock) {
+                if (playbackBroken) {
+                    for ((text, _) in sentChunks) parts.add(text)
+                } else {
+                    val l = lastAudioAt
+                    for ((text, sentAt) in sentChunks) {
+                        if (l == 0L || sentAt > l) parts.add(text)
+                    }
+                }
+                parts.addAll(unsentChunks)
+            }
+            return parts.joinToString(" ").trim()
+        }
+
+        /**
+         * stopAll(): silence NOW — socket cancelled, track torn
+         * down, and every wait loop observes [killed] and bails.
+         */
+        fun kill() {
+            killed = true
+            failed = true
+            openLatch.countDown()
+            try {
+                ws?.cancel()
+            } catch (_: Exception) {
+            }
+            closeSocket()
+            releaseTrack()
+            done = true
+            doneLatch.countDown()
+        }
+
+        private fun markFailed() {
+            failed = true
+            openLatch.countDown()
+        }
+
+        /**
+         * Open the socket and send the BOS config message. False on
+         * any problem (blank key/voice, connect timeout, refusal) —
+         * the caller then fails the session over to REST.
+         */
+        private fun ensureOpen(): Boolean {
+            if (bosSent) return !failed && !killed
+            val key = Prefs.elevenLabsKey
+            val voiceId = Prefs.elevenLabsVoiceId
+            if (key.isBlank() || voiceId.isBlank()) return false
+            val url = WS_BASE + voiceId +
+                "?model_id=" + MODEL_ID +
+                "&output_format=pcm_24000" +
+                "&inactivity_timeout=120"
+            // The key travels as the upgrade header AND in the BOS
+            // message — the docs bless both routes; belt and braces.
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("xi-api-key", key)
+                .build()
+            val socket = try {
+                wsHttp.newWebSocket(request, listener)
+            } catch (_: Exception) {
+                return false
+            }
+            synchronized(lock) { ws = socket }
+            // Wait for onOpen (or an async failure): sliced, so a
+            // kill or generation bump breaks us out promptly, with a
+            // hard 10 s cap so a hung connect can never wedge the
+            // stream worker.
+            val deadline = System.currentTimeMillis() + 10_000
+            while (!killed && !failed && gen == generation && !released) {
+                if (System.currentTimeMillis() > deadline) {
+                    markFailed()
+                    break
+                }
+                try {
+                    if (openLatch.await(100, TimeUnit.MILLISECONDS)) break
+                } catch (_: InterruptedException) {
+                    break
+                }
+            }
+            if (killed || failed || gen != generation || released) {
+                try {
+                    socket.cancel()
+                } catch (_: Exception) {
+                }
+                return false
+            }
+            // BOS: the initial config message (docs + official SDK
+            // shape): a single-space text, the voice settings this
+            // speaker has always used, the API key, and a chunk
+            // schedule whose first step (50 chars) keeps first-audio
+            // latency low.
+            val bos = try {
+                JSONObject()
+                    .put("text", " ")
+                    .put("xi_api_key", key)
+                    .put(
+                        "voice_settings",
+                        JSONObject()
+                            .put("stability", 0.35)
+                            .put("similarity_boost", 0.80)
+                            .put("style", 0.45)
+                            .put("use_speaker_boost", true)
+                    )
+                    .put(
+                        "generation_config",
+                        JSONObject().put(
+                            "chunk_length_schedule",
+                            JSONArray().put(50).put(120).put(500)
+                        )
+                    )
+                    .put("try_trigger_generation", true)
+                    .toString()
+            } catch (_: Exception) {
+                return false
+            }
+            val ok = try {
+                socket.send(bos)
+            } catch (_: Exception) {
+                false
+            }
+            if (!ok) return false
+            bosSent = true
+            return true
+        }
+
+        private fun closeSocket() {
+            val s = synchronized(lock) {
+                val cur = ws
+                ws = null
+                cur
+            }
+            try {
+                s?.close(1000, null)
+            } catch (_: Exception) {
+            }
+        }
+
+        // ----------------------------------------------------------
+        // PCM playback: a per-session AudioTrack fed from a queue,
+        // mirroring how AudioEngine plays Gemini's 24 kHz PCM.
+        // ----------------------------------------------------------
+
+        private fun startPlayerIfNeeded() {
+            synchronized(lock) {
+                if (playerStarted) return
+                playerStarted = true
+            }
+            Thread({
+                try {
+                    while (true) {
+                        if (killed) break
+                        val data = try {
+                            pcmQueue.poll(50, TimeUnit.MILLISECONDS)
+                        } catch (_: InterruptedException) {
+                            break
+                        }
+                        if (data != null) {
+                            val t = ensureTrack() ?: break
+                            var offset = 0
+                            while (offset < data.size) {
+                                if (killed) break
+                                val w = try {
+                                    t.write(
+                                        data, offset, data.size - offset,
+                                        AudioTrack.WRITE_BLOCKING
+                                    )
+                                } catch (_: Exception) {
+                                    -1
+                                }
+                                if (w <= 0) {
+                                    playbackBroken = true
+                                    break
+                                }
+                                offset += w
+                                framesWritten += w / 2
+                            }
+                            if (playbackBroken) break
+                        } else {
+                            // Nothing queued: finished when the input
+                            // is closed (EOS sent) and every written
+                            // frame has actually sounded — or, after a
+                            // failure, when the socket can produce no
+                            // more audio and the buffer has drained.
+                            if (inputClosed && headCaughtUp()) break
+                            if (failed && headCaughtUp()) break
+                        }
+                    }
+                } catch (_: Exception) {
+                } finally {
+                    releaseTrack()
+                    done = true
+                    doneLatch.countDown()
+                }
+            }, "myra-elevenlabs-player").apply { isDaemon = true }.start()
+        }
+
+        private fun ensureTrack(): AudioTrack? {
+            track?.let { return it }
+            return try {
+                val minBuf = AudioTrack.getMinBufferSize(
+                    24000,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+                )
+                val t = AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setSampleRate(24000)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(minBuf * 2)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+                track = t
+                t.play()
+                t
+            } catch (e: Exception) {
+                Log.d(TAG, "AudioTrack failed: ${e.javaClass.simpleName}: ${e.message}")
+                playbackBroken = true
+                markFailed()
+                null
+            }
+        }
+
+        /** True once every frame handed to the track has sounded. */
+        private fun headCaughtUp(): Boolean {
+            val t = track ?: return true
+            return try {
+                t.playbackHeadPosition.toLong() >= framesWritten
+            } catch (_: Exception) {
+                true
+            }
+        }
+
+        private fun releaseTrack() {
+            val t = synchronized(lock) {
+                val cur = track
+                track = null
+                cur
+            }
+            try {
+                t?.stop()
+            } catch (_: Exception) {
+            }
+            try {
+                t?.release()
+            } catch (_: Exception) {
+            }
         }
     }
 
