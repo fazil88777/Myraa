@@ -25,8 +25,8 @@ import org.json.JSONObject
  * unchanged.
  *
  * [memoryBlock] is appended to EVERY new voice session's system prompt, so she
- * remembers old conversations and proactively follows up on pending tasks —
- * like "Fazil, aap video generate kar rahe thay, uska kya bana?"
+ * remembers old conversations. Tasks are NEVER surfaced proactively (v31):
+ * they reach her only when Fazil explicitly asks about them.
  */
 object MyraMemory {
 
@@ -35,12 +35,15 @@ object MyraMemory {
     private const val MAX_FACTS = 200
     private const val BRAIN_FILE = "myra_brain.json"
     private const val MAX_TASKS = 50
+    // v31 one-time task-purge flag, stored inside myra_brain.json itself.
+    private const val KEY_TASKS_WIPED_V31 = "tasks_wiped_v31"
 
     private lateinit var appContext: Context
 
     fun init(context: Context) {
         if (!::appContext.isInitialized) {
             appContext = context.applicationContext
+            purgeTasksOnceV31()
             seedIfEmpty()
         }
     }
@@ -145,6 +148,24 @@ object MyraMemory {
         }
         brain.put("tasks", arr)
         writeBrain(brain)
+    }
+
+    /**
+     * v31 (Fazil's explicit decision): wipe ALL tasks stored before this
+     * version — pending AND done — exactly once, so an old to-do can
+     * never resurface. The durable flag lives in the brain file next to
+     * the tasks, so the purge runs a single time; tasks added afterwards
+     * persist normally.
+     */
+    private fun purgeTasksOnceV31() {
+        try {
+            val brain = readBrain()
+            if (brain.optBoolean(KEY_TASKS_WIPED_V31, false)) return
+            brain.put("tasks", JSONArray())
+            brain.put(KEY_TASKS_WIPED_V31, true)
+            writeBrain(brain)
+        } catch (_: Exception) {
+        }
     }
 
     /** Adds a pending task; ignores blanks and near-duplicates. Returns true if stored. */
@@ -450,17 +471,6 @@ object MyraMemory {
             sb.append("chahe kitne din guzar jayein):\n")
             facts.forEach { sb.append("\u2022 ").append(it).append("\n") }
         }
-        val pending = pendingTasks()
-        if (pending.isNotEmpty()) {
-            sb.append("TUMHARE ADHOORE KAAM (purane sessions ke pending tasks ")
-            sb.append("\u2014 inka zikr karna ya inhein poora karna tumhari zimmedari hai):\n")
-            pending.forEach { sb.append("\u2022 ").append(it).append("\n") }
-        }
-        val done = recentDone()
-        if (done.isNotEmpty()) {
-            sb.append("HAAL HI MEIN POORE KIYE:\n")
-            done.forEach { sb.append("\u2022 ").append(it).append("\n") }
-        }
         val projects = recentProjects()
         if (projects.isNotEmpty()) {
             sb.append("CHAL RAHE PROJECTS (har project ki tareekh aur status \u2014 ")
@@ -477,13 +487,6 @@ object MyraMemory {
         if (recap.isNotBlank()) {
             sb.append("PICHHLI BAAR YE HUA THA (last session ka khulasa):\n")
             sb.append(recap).append("\n")
-        }
-        if (pending.isNotEmpty()) {
-            sb.append("PURANI BAATON KO YAAD RAKHNA \u2014 SAKHT ZAROORI: Fazil jab dobara aaye ")
-            sb.append("to nayee shuruaat mat karo \u2014 upar ADHOORE KAAM mein se EIK ka zikr ")
-            sb.append("greeting ke saath naturally karo (ek se zyada nahi, nagging nahi). Jab koi ")
-            sb.append("kaam poora ho jaye to foran complete_task call karo; naya kaam mile to ")
-            sb.append("foran add_task call karo.\n")
         }
         return sb.toString()
     }

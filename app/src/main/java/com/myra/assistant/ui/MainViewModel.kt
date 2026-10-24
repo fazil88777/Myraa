@@ -76,11 +76,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingInputMsgIndex = -1
     private var watchdogStarted = false
 
-    // --- deterministic welcome voice on user-initiated connect ---
-    // The model doesn't always volunteer its greeting, so the app itself
-    // speaks "Welcome to Myra Assistant" exactly once per manual start
-    // (never on auto-reconnects). Mic capture starts after the welcome
-    // finishes so the model doesn't hear it as user speech.
+    // --- session start on user-initiated connect (v31: silent) ---
+    // Set once per manual start (never on auto-reconnects): when setup
+    // completes, the connect flow runs speakWelcomeThen() as its single
+    // "session is live" step. Since v31 nothing is announced out loud —
+    // capture simply starts, silently.
     private var speakWelcomeOnConnect = false
     // Transcript-mode TTS voice for THIS session (null in Gemini Live
     // audio mode). Created fresh in beginNewSession when a transcript
@@ -742,56 +742,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Speaks "Welcome to Myra Assistant" (guaranteed to play — the AI model
-     * doesn't always volunteer a greeting), then runs [after] once the
-     * welcome has finished so the mic never picks it up as user speech.
-     * Transcript engines speak the line through their speaker; on ANY
-     * failure the chain simply moves on WITHOUT speech — there is no
-     * robotic device-TTS fallback anywhere in the app. Gemini Live mode
-     * has no canned greeting at all: the session just starts.
+     * v31 (Fazil's explicit choice): SILENT session start. The canned
+     * "Welcome to Myra Assistant" announcement is gone in every mode —
+     * nothing is spoken when a session opens, and she speaks only after
+     * Fazil speaks first. This step remains as the connect flow's single
+     * "session is live, begin" point: it runs [after] exactly once,
+     * immediately, in all modes.
      */
     private fun speakWelcomeThen(after: () -> Unit) {
-        val speaker = voiceSpeaker
-        if (speaker == null) {
-            // Gemini Live's own voice mode: no canned greeting line.
-            after()
-            return
-        }
-        val ui = Handler(Looper.getMainLooper())
-        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
-        try {
-            speaker.speakOnce(
-                "Welcome to Myra Assistant",
-                onPlayed = {
-                    ui.post {
-                        if (settled.compareAndSet(false, true)) {
-                            ui.postDelayed({ after() }, 300)
-                        }
-                    }
-                },
-                onFailed = {
-                    ui.post {
-                        if (settled.compareAndSet(false, true)) {
-                            after()
-                        }
-                    }
-                }
-            )
-            // Safety net: a hung synthesis must never hold the mic
-            // hostage — start capture without the greeting after a few
-            // seconds.
-            ui.postDelayed({
-                if (settled.compareAndSet(false, true)) {
-                    try {
-                        speaker.stopAll()
-                    } catch (_: Exception) {
-                    }
-                    after()
-                }
-            }, 9000)
-        } catch (_: Exception) {
-            after()
-        }
+        after()
     }
 
     fun stopSession() {

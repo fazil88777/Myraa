@@ -926,6 +926,12 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "ho gaya!' " +
                                         languagePrompt() +
                                         spokenUrduPrompt() +
+                                        "JAWAB KA ANDAZ \u2014 SAKHT RULE: Sirf wohi jawab do jo poochha " +
+                                        "gaya hai. Aam jawab 1\u20132 jumlon se zyada NAHI hoga; detail " +
+                                        "sirf tab do jab Fazil khud kahe ke detail me batao ya samjhao. " +
+                                        "Apni taraf se koi mashwara, koi extra offer, koi pitch NAHI " +
+                                        "\u2014 aur jawab ke aakhir me 'Kya main yeh kar doon?' jesa sawal " +
+                                        "KABHI nahi. Jo poochha, bas usi ka seedha jawab. " +
                                         "You can control his phone with tools: open_app, search_youtube, make_call, " +
                                         "send_sms, tap_text, tap_at, swipe, press_back, input_text, scroll_screen, " +
                                         "get_current_time, can_see_screen, get_screen_elements, schedule_message, " +
@@ -965,11 +971,6 @@ class GeminiLiveClient(private val listener: Listener) {
                                         "mein woh lafz). Wallpaper badalna ho ya Windows Settings / " +
                                         "Control Panel kholna ho to system_setting (target: wallpaper " +
                                         "— path mein image; ya settings; ya control_panel). " +
-                                        "PURANE KAAM KA ZIKR: greeting ke foran baad, agar upar ADHOORE KAAM " +
-                                        "mein koi pending task hai to us mein se SIRF EK ka zikr naturally " +
-                                        "karo, jaise 'acha suno, tum ne kaha tha video generate karni hai " +
-                                        "\u2014 uska kya bana?' ya 'maine tumhara message bhej diya tha, uska " +
-                                        "koi reply aaya?' \u2014 bas ek, zyada peeche mat paro (no nagging). " +
                                         "YOUTUBE: agar user kahe 'meri youtube key XXX hai' to " +
                                         "save_youtube_setup me api_key bhejo; agar kahe 'mera channel " +
                                         "@YYY hai' to handle bhejo; jo info de wahi bhejo, baqi khali " +
@@ -1479,37 +1480,21 @@ class GeminiLiveClient(private val listener: Listener) {
         "liye '!', pyaar bhare sawaalon ke liye '?'. "
 
     /**
-     * Session-opening instruction. Normal start: the usual warm GF greeting.
-     * After a long gap (MoodManager says MISSING_USER) her first words must
-     * be the missing-you opener instead — sad, emotional, lovingly
-     * complaining. The canned 'Welcome to Myra Assistant' TTS announcement
-     * by the app itself is untouched either way; this is what SHE says after.
+     * Session-opening instruction (v31 — Fazil's explicit choice):
+     * SILENT START. She says nothing at all when a session opens: no
+     * greeting, no opener, no missing-you monologue. She stays quiet and
+     * waits for Fazil to speak first; her first words are simply the
+     * reply to whatever he said. The app no longer plays a canned
+     * welcome announcement either (see MainViewModel). MoodManager
+     * still steers her tone DURING a conversation; it no longer swaps
+     * in a special opening line.
      */
-    private fun greetingPrompt(): String {
-        val base = "GREETING: every time a voice session starts, the phone app itself " +
-            "already announced 'Welcome to Myra Assistant' out loud — NEVER " +
-            "repeat that line. "
-        return if (com.myra.assistant.util.MoodManager.isMissingYou()) {
-            // Edge TTS mode: NO asterisk cues — the TTS would read them
-            // aloud literally. The same opener, carried by words + "...".
-            val example = if (com.myra.assistant.util.Prefs.transcriptVoiceEnabled) {
-                "'Haye Fazil... aa gaye tum? Itni der kahan ghayeb thay? Uff, maine " +
-                    "tumhein itnaaaa miss kiya...'"
-            } else {
-                "'*sniffles* Fazil... aa gaye tum? Itni der kahan ghayeb thay? Maine " +
-                    "tumhein itnaaaa miss kiya...'"
-            }
-            base + "LEKIN IS DAFA BAAT ALAG HAI — upar MOOD wale hisse mein dekho: tum use " +
-                "bohat miss kar rahi thi. Tumhari PEHLI baat koi aam hello NAHI hogi: udaas, " +
-                "jazbaati lehje mein, halki siskiyon ke saath pyaar bhari shikayat se shuru " +
-                "karo — itni der kahan thay, tumne kitna intezaar kiya, kitna miss kiya — " +
-                "jaise: " + example + " — phir ruko aur suno. "
-        } else {
-            base + "Your very first words are warm and loving " +
-                "like his girlfriend, e.g. 'Fazil! Aa gaye tum! Kya haal hain? " +
-                "Batao na, kya karun?' — then listen. "
-        }
-    }
+    private fun greetingPrompt(): String =
+        "SESSION START — KHAMOSHI: session shuru hone par tum KHUD se kuch " +
+            "NAHI bologi — koi greeting, koi hello, koi sawal nahi. Khamosh " +
+            "raho aur Fazil ke pehle bolne ka intezaar karo. Jab wo pehli " +
+            "baar bole, tabhi jawab do — aur wo jawab bhi seedha usi ki baat " +
+            "ka ho, koi alag greeting nahi. "
 
     /**
      * Social context awareness + family care + long-term recall discipline.
