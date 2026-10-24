@@ -590,9 +590,12 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
     /**
      * One Google Input Tools call converting the WHOLE phrase in a
      * single request. Reply shape:
-     * ["SUCCESS",[["<original>",["<converted phrase>"],[],{...}]]]
-     * — the converted full phrase is element [1][0][1][0]. Null on
-     * any problem (the caller then uses the original text).
+     * ["SUCCESS",[["<chunk>",["<converted chunk>"],[],{...}], ...]]
+     * Long input comes back as MULTIPLE segments in element [1] —
+     * one per chunk of the input — so the conversions of ALL
+     * segments must be joined in order; reading only segment [0]
+     * truncated long replies to their first words (the v30 bug).
+     * Null on any problem (the caller then uses the original text).
      */
     private fun fetchTransliteration(text: String): String? {
         return try {
@@ -608,9 +611,30 @@ class ElevenLabsSpeaker(context: Context) : VoiceSpeaker {
                     if (body.isNullOrBlank()) {
                         null
                     } else {
-                        JSONArray(body)
-                            .optJSONArray(1)?.optJSONArray(0)?.optJSONArray(1)
-                            ?.optString(0)?.takeIf { it.isNotBlank() }
+                        val segments = JSONArray(body).optJSONArray(1)
+                        if (segments == null || segments.length() == 0) {
+                            null
+                        } else {
+                            // Join EVERY segment's conversion, in
+                            // order — the segments cover successive
+                            // chunks of the input and their texts
+                            // already carry the joining spaces.
+                            val joined = StringBuilder()
+                            for (i in 0 until segments.length()) {
+                                val segment = segments.optJSONArray(i)
+                                val candidate =
+                                    segment?.optJSONArray(1)?.optString(0)
+                                if (!candidate.isNullOrBlank()) {
+                                    joined.append(candidate)
+                                } else {
+                                    // No conversion for this chunk —
+                                    // keep its original words so no
+                                    // part of the reply is dropped.
+                                    joined.append(segment?.optString(0).orEmpty())
+                                }
+                            }
+                            joined.toString().takeIf { it.isNotBlank() }
+                        }
                     }
                 }
             }
